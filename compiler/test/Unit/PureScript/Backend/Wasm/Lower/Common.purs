@@ -21,7 +21,7 @@ import PureScript.CoreFn as CF
 -- --- CoreFn builders (zero annotation) --------------------------------------
 
 ann :: CF.Ann
-ann = { span: { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }, meta: Nothing }
+ann = { span: { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }, meta: Nothing, type: Nothing }
 
 -- | An annotation carrying compiler metadata.
 annMeta :: CF.Meta -> CF.Ann

@@ -40,7 +40,7 @@ collectCtors fieldReps modules = (foldl perModule { counts: Object.empty, out: O
   where
   perModule acc m = foldl (step m.name) acc (Array.mapMaybe ctorOf m.decls)
   ctorOf = case _ of
-    NonRec _ _ (M.Constructor typeName ctorName fieldNames) ->
+    NonRec _ _ _ (M.Constructor typeName ctorName fieldNames) ->
       Just { typeName, ctorName, arity: Array.length fieldNames }
     _ -> Nothing
   step moduleName { counts, out } { typeName, ctorName, arity } =
@@ -73,7 +73,7 @@ collectEnumCtors modules =
     if Object.lookup e.typeKey typeArities == Just 0 then Just (Tuple e.ctorKey unit)
     else Nothing
   ctorEntry moduleName = case _ of
-    NonRec _ _ (M.Constructor typeName ctorName fieldNames) ->
+    NonRec _ _ _ (M.Constructor typeName ctorName fieldNames) ->
       Just
         { typeKey: qualifiedKey moduleName typeName
         , ctorKey: qualifiedKey moduleName ctorName
@@ -89,7 +89,7 @@ topLevelBindings :: Array Bind -> Array (Tuple String M.Expr)
 topLevelBindings = (_ >>= flatten)
   where
   flatten = case _ of
-    NonRec _ ident expr -> [ Tuple ident expr ]
+    NonRec _ _ ident expr -> [ Tuple ident expr ]
     Rec rs -> map (\r -> Tuple r.ident r.expr) rs
 
 -- | Every module's non-constructor top-level functions, keyed by qualified name
@@ -126,7 +126,7 @@ collectDictCtors modules = Object.fromFoldable (modules >>= moduleDictCtors)
   where
   moduleDictCtors m = Array.mapMaybe (dictCtorOf m.name) m.decls
   dictCtorOf moduleName = case _ of
-    NonRec (Just IsTypeClassConstructor) ident _ -> Just (Tuple (qualifiedKey moduleName ident) unit)
+    NonRec (Just IsTypeClassConstructor) _ ident _ -> Just (Tuple (qualifiedKey moduleName ident) unit)
     _ -> Nothing
 
 -- | Intern every record/dictionary label to its `i32` id. The id is a hash of the
@@ -142,7 +142,7 @@ collectLabels modules =
     (map (\l -> Tuple l (labelHash l)) (Array.nub (modules >>= \m -> m.decls >>= bindLabels)))
   where
   bindLabels = case _ of
-    NonRec _ _ e -> exprLabels e
+    NonRec _ _ _ e -> exprLabels e
     Rec rs -> rs >>= \r -> exprLabels r.expr
   exprLabels = case _ of
     M.Lit (LitObject kvs) -> kvs >>= \(Tuple l v) -> Array.cons l (exprLabels v)
@@ -208,7 +208,7 @@ qualifiedRefs = go
     Right e -> go e
     Left guards -> guards >>= \g -> go g.guard <> go g.expression
   bindRefs = case _ of
-    NonRec _ _ e -> go e
+    NonRec _ _ _ e -> go e
     Rec rs -> rs >>= \r -> go r.expr
 
 -- | The set of function keys reachable from `roots`, following references through

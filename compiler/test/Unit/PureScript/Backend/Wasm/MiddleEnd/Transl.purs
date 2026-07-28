@@ -34,7 +34,7 @@ spec = describe "PureScript.Backend.Wasm.MiddleEnd.Transl (CoreFn -> MIR)" do
   it "leaves a nullary value as a value, not an Abs" do
     -- x = 5   →   NonRec x (Lit …)   (CAFs are not lambdas)
     case translBind (def "x" (litInt 5)) of
-      M.NonRec _ "x" (M.Lit _) -> pure unit
+      M.NonRec _ _ "x" (M.Lit _) -> pure unit
       _ -> fail "expected NonRec x = Lit"
 
   it "translates the fixture corpus without partiality (decl count preserved)" do

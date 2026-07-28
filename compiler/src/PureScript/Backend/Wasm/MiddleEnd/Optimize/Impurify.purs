@@ -61,7 +61,7 @@ impurifyProgram :: Map String Int -> Array M.Module -> Array M.Module
 impurifyProgram effArities = map \m -> m { decls = map impurifyBind m.decls }
   where
   impurifyBind = case _ of
-    M.NonRec meta i e -> M.NonRec meta i (runTrampoline (go e))
+    M.NonRec meta t i e -> M.NonRec meta t i (runTrampoline (go e))
     M.Rec rs -> M.Rec (map (\r -> r { expr = runTrampoline (go r.expr) }) rs)
 
   -- The value-arity of an effectful **host** foreign (so a full application is an `Effect`
@@ -151,7 +151,7 @@ impurifyProgram effArities = map \m -> m { decls = map impurifyBind m.decls }
       Left gs -> (\gs' -> alt { result = Left gs' }) <$> traverse goGuard gs
     goGuard g = (\gu ge -> { guard: gu, expression: ge }) <$> goSub g.guard <*> goSub g.expression
     goBind = case _ of
-      M.NonRec meta i e -> (\e' -> M.NonRec meta i e') <$> goSub e
+      M.NonRec meta t i e -> (\e' -> M.NonRec meta t i e') <$> goSub e
       M.Rec rs -> M.Rec <$> traverse (\r -> (\e' -> r { expr = e' }) <$> goSub r.expr) rs
 
 -- | Reflect an `Effect` value into its thunk encoding: `reflect m = \$ev -> Π(m)` — a thunk
@@ -194,12 +194,12 @@ perform e = M.Perform e
 bindBody :: M.Expr -> M.Expr -> M.Expr
 bindBody m k = case k of
   -- common case: the continuation is a literal `\x -> body`, so reuse its binder
-  M.Abs [ x ] kbody -> M.Let [ M.NonRec Nothing x (perform m) ] (perform kbody)
+  M.Abs [ x ] kbody -> M.Let [ M.NonRec Nothing Nothing x (perform m) ] (perform kbody)
   _ ->
     let
       x = fresh (Set.union (allVars m) (allVars k)) "$x"
     in
-      M.Let [ M.NonRec Nothing x (perform m) ]
+      M.Let [ M.NonRec Nothing Nothing x (perform m) ]
         (perform (M.App k [ M.Var (Qualified Nothing x) ]))
 
 -- | `map f m` over `Effect`: a thunk that performs `m`, then applies `f` to the result —
@@ -209,7 +209,7 @@ mapBody f m =
   let
     a = fresh (Set.union (allVars f) (allVars m)) "$a"
   in
-    thunk (M.Let [ M.NonRec Nothing a (perform m) ] (M.App f [ M.Var (Qualified Nothing a) ]))
+    thunk (M.Let [ M.NonRec Nothing Nothing a (perform m) ] (M.App f [ M.Var (Qualified Nothing a) ]))
 
 -- | `apply mf ma` over `Effect`: perform `mf` then `ma`, then apply — `\$ev -> let f =
 -- | perform mf in let a = perform ma in f a` (ADR 0019).
@@ -221,8 +221,8 @@ applyBody mf ma =
     a = fresh (Set.insert f used) "$a"
   in
     thunk
-      ( M.Let [ M.NonRec Nothing f (perform mf) ]
-          (M.Let [ M.NonRec Nothing a (perform ma) ] (M.App (M.Var (Qualified Nothing f)) [ M.Var (Qualified Nothing a) ]))
+      ( M.Let [ M.NonRec Nothing Nothing f (perform mf) ]
+          (M.Let [ M.NonRec Nothing Nothing a (perform ma) ] (M.App (M.Var (Qualified Nothing f)) [ M.Var (Qualified Nothing a) ]))
       )
 
 allVars :: M.Expr -> Set String

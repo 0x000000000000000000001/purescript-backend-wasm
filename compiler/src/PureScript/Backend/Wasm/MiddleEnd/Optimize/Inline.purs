@@ -46,7 +46,7 @@ newtypeCtorNames :: Array M.Module -> Set String
 newtypeCtorNames modules = Set.fromFoldable (modules >>= \m -> Array.mapMaybe (newtypeOf m.name) m.decls)
   where
   newtypeOf modName = case _ of
-    M.NonRec (Just IsNewtype) ident _ -> Just (key modName ident)
+    M.NonRec (Just IsNewtype) _ ident _ -> Just (key modName ident)
     _ -> Nothing
 
 type Cand = { key :: String, rhs :: M.Expr, refs :: Array String }
@@ -63,7 +63,7 @@ inlineCandidates modules = Map.fromFoldable (Array.filter acyclic eligible)
   -- alone too (the simplifier's `case` matches a *named* ctor reference, so inlining
   -- it to its `Constructor` value would defeat case-of-known-constructor)
   bindOf modName = case _ of
-    M.NonRec _ ident rhs
+    M.NonRec _ _ ident rhs
       | not (isCtorBody rhs) -> Just { key: key modName ident, rhs, refs: references rhs }
     _ -> Nothing
 

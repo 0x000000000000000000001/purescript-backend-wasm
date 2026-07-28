@@ -72,6 +72,7 @@ const benches = [
   { name: "mapFoldArray", sizes: [100, 200, 300, 400, 500], desc: "map/foldl over a Data.Array (ulib HOFs)" },
   { name: "countEffect", bundle: "countEffect", fn: "countTo", sizes: [1000, 2000, 4000, 8000, 16000, 32000, 64000], desc: "Effect monad: cyclic instance dicts → constant-stack loop" },
   { name: "curry", bundle: "curry", fn: "curryDispatch", sizes: [50_000, 100_000, 200_000, 400_000, 800_000], desc: "curried Int->Int->Int dispatch (closure-alloc)" },
+  { name: "polyInt", sizes: [100_000, 200_000, 400_000, 800_000, 1_600_000, 3_200_000, 6_400_000], desc: "TAST unboxing vs heuristic boxing (cold path)" },
 ];
 
 // Adaptive timing: warm up, calibrate the repetition count so a timed batch runs

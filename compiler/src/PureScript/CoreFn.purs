@@ -60,7 +60,19 @@ data ConstructorType = ProductType | SumType
 derive instance genericConstructorType :: Generic ConstructorType _
 derive instance eqConstructorType :: Eq ConstructorType
 instance showConstructorType :: Show ConstructorType where
-  show = genericShow
+  show c = genericShow c
+
+data ExprType
+  = TypeInt
+  | TypeNumber
+  | TypeBoolean
+  | TypeChar
+  | TypeOther
+
+derive instance genericExprType :: Generic ExprType _
+derive instance eqExprType :: Eq ExprType
+instance showExprType :: Show ExprType where
+  show c = genericShow c
 
 -- | Compiler-attached metadata on a node, guiding code generation.
 data Meta
@@ -76,8 +88,12 @@ derive instance eqMeta :: Eq Meta
 instance showMeta :: Show Meta where
   show = genericShow
 
+-- | `corefn.json` dumps these without qualifiers, assuming the surrounding `App`
+-- | supplies them.
+type RecordUpdate = { label :: String, expression :: Expr }
+
 -- | Per-node annotation: where it came from and any compiler metadata.
-type Ann = { span :: SourceSpan, meta :: Maybe Meta }
+type Ann = { span :: SourceSpan, meta :: Maybe Meta, type :: Maybe ExprType }
 
 -- | A literal value. Polymorphic in `a` because the same shapes appear in both
 -- | expression literals (`a = Expr`) and pattern literals (`a = Binder`).

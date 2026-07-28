@@ -25,7 +25,7 @@ import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual)
 
 ann :: CF.Ann
-ann = { span: { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }, meta: Nothing }
+ann = { span: { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }, meta: Nothing, type: Nothing }
 
 mod_ :: CF.ModuleName -> Array CF.ModuleName -> Array CF.Bind -> CF.Module
 mod_ name imports decls =
@@ -67,8 +67,8 @@ depMir :: M.Module
 depMir =
   { name: [ "Dep" ]
   , decls:
-      [ M.NonRec Nothing "foo" (M.Abs [ "x" ] (M.Var (CF.Qualified Nothing "x")))
-      , M.NonRec Nothing "bar" (M.Lit (CF.LitInt 5))
+      [ M.NonRec Nothing Nothing "foo" (M.Abs [ "x" ] (M.Var (CF.Qualified Nothing "x")))
+      , M.NonRec Nothing Nothing "bar" (M.Lit (CF.LitInt 5))
       ]
   }
 
@@ -76,7 +76,7 @@ mainMir :: M.Module
 mainMir =
   { name: [ "Main" ]
   , decls:
-      [ M.NonRec Nothing "baz"
+      [ M.NonRec Nothing Nothing "baz"
           (M.App (M.Var (CF.Qualified (Just [ "Dep" ]) "foo")) [ M.Var (CF.Qualified (Just [ "Dep" ]) "bar") ])
       ]
   }

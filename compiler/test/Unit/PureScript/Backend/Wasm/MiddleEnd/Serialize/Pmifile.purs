@@ -20,7 +20,7 @@ import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual)
 
 summaryMod :: M.Module
-summaryMod = { name: [ "Data", "Demo" ], decls: [ M.NonRec Nothing "go" (M.Var (Qualified Nothing "x")) ] }
+summaryMod = { name: [ "Data", "Demo" ], decls: [ M.NonRec Nothing Nothing "go" (M.Var (Qualified Nothing "x")) ] }
 
 -- a recursive marshalling kind exercising every constructor (incl. the nested record/array/func/effect)
 nestedKind :: MarshalKind

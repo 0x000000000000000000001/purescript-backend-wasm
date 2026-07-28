@@ -23,7 +23,7 @@ loc :: String -> M.Expr
 loc n = M.Var (Qualified Nothing n)
 
 def :: String -> M.Expr -> M.Bind
-def n e = M.NonRec Nothing n e
+def n e = M.NonRec Nothing Nothing n e
 
 -- the analysis over one module `T`, seeded with the single effectful foreign `T.eff`
 impureOf :: Array M.Bind -> Set.Set String

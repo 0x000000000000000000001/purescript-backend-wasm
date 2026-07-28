@@ -207,7 +207,7 @@ stripAbs = case _ of
 
 bindEntries :: Array String -> M.Bind -> Array (Tuple String M.Expr)
 bindEntries mn = case _ of
-  M.NonRec _ i e -> [ Tuple (keyOf mn i) e ]
+  M.NonRec _ t i e -> [ Tuple (keyOf mn i) e ]
   M.Rec rs -> map (\r -> Tuple (keyOf mn r.ident) r.expr) rs
 
 keyOf :: Array String -> String -> String
@@ -215,7 +215,7 @@ keyOf mn i = joinWith "." mn <> "." <> i
 
 bindExprs :: M.Bind -> Array M.Expr
 bindExprs = case _ of
-  M.NonRec _ _ e -> [ e ]
+  M.NonRec _ _ _ e -> [ e ]
   M.Rec rs -> map _.expr rs
 
 altExprs :: M.Alt -> Array M.Expr

@@ -24,7 +24,7 @@ import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe)
 import Data.Show.Generic (genericShow)
 import Data.Tuple (Tuple)
-import PureScript.CoreFn (Binder, Ident, Literal, Meta, ModuleName, ProperName, Qualified)
+import PureScript.CoreFn (Binder, ExprType, Ident, Literal, Meta, ModuleName, ProperName, Qualified)
 
 -- | A whole module after translation: its name and top-level binding groups.
 type Module = { name :: ModuleName, decls :: Array Bind }
@@ -70,7 +70,7 @@ instance Show Expr where
 -- | chiefly `IsTypeClassConstructor`, which marks the newtype-identity dictionary
 -- | constructors that dictionary elimination erases.
 data Bind
-  = NonRec (Maybe Meta) Ident Expr
+  = NonRec (Maybe Meta) (Maybe ExprType) Ident Expr
   | Rec (Array RecBinding)
 
 derive instance Generic Bind _
@@ -78,7 +78,7 @@ derive instance Eq Bind
 instance Show Bind where
   show b = genericShow b
 
-type RecBinding = { meta :: Maybe Meta, ident :: Ident, expr :: Expr }
+type RecBinding = { meta :: Maybe Meta, type :: Maybe ExprType, ident :: Ident, expr :: Expr }
 
 -- | A `case` alternative: a row of binders and either a single unguarded result
 -- | (`Right`) or guarded results (`Left`). `Binder` is reused from CoreFn (it

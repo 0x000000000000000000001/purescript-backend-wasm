@@ -21,13 +21,13 @@ foreign import readFixture :: String -> Effect String
 
 -- | The zero annotation that `@` expands to in the JSON fixtures below.
 ann0 :: Ann
-ann0 = { span: { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }, meta: Nothing }
+ann0 = { span: { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }, meta: Nothing, type: Nothing }
 
 -- | Replace each `@` placeholder with a zero-span, no-meta `annotation` field.
 -- | Keeps the JSON fixtures readable instead of repeating the annotation.
 withAnn :: String -> String
 withAnn = replaceAll (Pattern "@")
-  (Replacement """"annotation":{"meta":null,"sourceSpan":{"start":[0,0],"end":[0,0]}}""")
+  (Replacement """"annotation":{"meta":null,"sourceSpan":{"start":[0,0],"end":[0,0]},"type":null}""")
 
 -- | Run a decoder over a JSON string, flattening parse + decode errors.
 run :: forall a. (Json -> Either JsonDecodeError a) -> String -> Either String a

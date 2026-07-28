@@ -38,7 +38,7 @@ exprSize = case _ of
     Right e -> exprSize e
     Left gs -> sum (map (\g -> exprSize g.guard + exprSize g.expression) gs)
   bindSize = case _ of
-    M.NonRec _ _ e -> exprSize e
+    M.NonRec _ _ _ e -> exprSize e
     M.Rec rs -> sum (map (exprSize <<< _.expr) rs)
 
 -- | Every top-level (qualified) name an expression references, with multiplicity
@@ -60,7 +60,7 @@ references = case _ of
     Right e -> [ e ]
     Left gs -> gs >>= \g -> [ g.guard, g.expression ]
   bindExprs = case _ of
-    M.NonRec _ _ e -> [ e ]
+    M.NonRec _ _ _ e -> [ e ]
     M.Rec rs -> map _.expr rs
 
 litExprs :: Literal M.Expr -> Array M.Expr

@@ -76,10 +76,10 @@ rawFreeVars = go
             Left guards -> dedup (guards >>= \g -> rawFreeVars g.guard <> rawFreeVars g.expression)
         )
   bindNames = case _ of
-    M.NonRec _ n _ -> [ n ]
+    M.NonRec _ _ n _ -> [ n ]
     M.Rec rs -> map _.ident rs
   bindExprs = case _ of
-    M.NonRec _ _ e -> [ e ]
+    M.NonRec _ _ _ e -> [ e ]
     M.Rec rs -> map _.expr rs
 
 -- | The variables a binder brings into scope.

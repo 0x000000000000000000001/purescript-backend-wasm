@@ -25,7 +25,7 @@ printModule m =
 
 printBind :: Int -> M.Bind -> String
 printBind ind = case _ of
-  M.NonRec meta ident e -> metaTag meta <> ident <> " = " <> printExpr ind e
+  M.NonRec meta _ ident e -> metaTag meta <> ident <> " = " <> printExpr ind e
   M.Rec rs ->
     "rec\n" <> joinWith "\n"
       (map (\r -> pad (ind + 1) <> metaTag r.meta <> r.ident <> " = " <> printExpr (ind + 1) r.expr) rs)

@@ -54,6 +54,7 @@ import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Control.Alt ((<|>))
 import Data.Map as Map
+import PureScript.CoreFn as C
 import Data.Maybe (Maybe(..), isJust, maybe)
 import Data.Set (Set)
 import Data.Set as Set
@@ -406,11 +407,13 @@ liftLambda self env param body = do
           <> Array.mapWithIndex (\i f -> Tuple f (AVar (EnvField i))) frees
       )
   let codeEnv = env { locals = codeLocals }
-  saved <- gets _.slot
-  modify_ _ { slot = 2 }
+  savedSlot <- gets _.slot
+  savedReps <- gets _.forcedReps
+  modify_ _ { slot = 2, forcedReps = Map.empty }
   codeAnfExpr <- lowerTail codeEnv body
   codeCount <- gets _.slot
-  modify_ _ { slot = saved }
+  codeReps <- gets _.forcedReps
+  modify_ _ { slot = savedSlot, forcedReps = savedReps }
   modify_ \s -> s
     { lifted = Array.snoc s.lifted
         { name: codeName
@@ -419,6 +422,7 @@ liftLambda self env param body = do
         , body: codeAnfExpr
         , export: Nothing
         , localCount: codeCount
+        , forcedReps: codeReps
         }
     }
   pure { codeName, captures }
@@ -446,8 +450,13 @@ lowerCoreLet env binds body = lowerCoreLetK env binds body lowerTail
 lowerCoreLetK :: Env -> Array Bind -> M.Expr -> (Env -> M.Expr -> Lower AnfExpr) -> Lower AnfExpr
 lowerCoreLetK env binds body finish = case Array.uncons binds of
   Nothing -> finish env body
-  Just { head: NonRec _ ident e, tail } ->
-    lowerArg env e \atom ->
+  Just { head: NonRec _ t ident e, tail } ->
+    lowerArg env e \atom -> do
+      case atom, t of
+        AVar (Local (Slot s)), Just type_
+          | isIntType type_ -> modify_ \st -> st { forcedReps = Map.insert s I32 st.forcedReps }
+          | isNumberType type_ -> modify_ \st -> st { forcedReps = Map.insert s F64 st.forcedReps }
+        _, _ -> pure unit
       lowerCoreLetK (env { locals = Object.insert ident atom env.locals }) tail body finish
   Just { head: Rec recBinds, tail } -> case recBinds of
     [ r ]
@@ -505,8 +514,8 @@ lowerRecValueLet env r tail body finish = do
   let selfId = "$recself" <> show nSelf
   let rhs' = substMany (Map.singleton r.ident (readRef selfId)) r.expr
   lowerCoreLetK env
-    ( [ NonRec Nothing cellId (newWithSelf (M.Abs [ selfId ] rhs'))
-      , NonRec Nothing r.ident (readRef cellId)
+    ( [ NonRec Nothing Nothing cellId (newWithSelf (M.Abs [ selfId ] rhs'))
+      , NonRec Nothing Nothing r.ident (readRef cellId)
       ] <> tail
     )
     body
@@ -702,9 +711,10 @@ lowerTopFunc info moduleName isRoot (Tuple ident expr) = do
       , foreignSigs: info.foreignSigs
       , foreignNames: info.foreignNames
       }
-  modify_ _ { slot = Array.length params }
+  modify_ _ { slot = Array.length params, forcedReps = Map.empty }
   block <- lowerTail env body
   count <- gets _.slot
+  codeReps <- gets _.forcedReps
   pure
     { name: funcName moduleName ident
     , params: const Boxed <$> params
@@ -712,6 +722,7 @@ lowerTopFunc info moduleName isRoot (Tuple ident expr) = do
     , body: block
     , export: if isRoot then Just ident else Nothing
     , localCount: count
+    , forcedReps: codeReps
     }
 
 -- | Link and lower several MIR modules into one backend IR `Program` (one wasm; ADR
@@ -756,7 +767,7 @@ lowerModules optimize fieldReps foreignSigs foreignNames roots modules = do
     Nothing -> pure unit
   Tuple funcs st <- runStateT
     (traverse (\e -> lowerTopFunc info e.moduleName e.isRoot (Tuple e.ident e.expr)) toLower)
-    { slot: 0, lifted: [], nextCode: 0 }
+    { slot: 0, lifted: [], nextCode: 0, forcedReps: Map.empty }
   let allFuncs = funcs <> st.lifted
   -- the marshal signature of each exported function (looked up by its qualified name
   -- in the externs-derived `foreignSigs`, which covers every top-level value), so the
@@ -894,7 +905,7 @@ lowerOneModule info reachable crossModuleRefs roots m = do
       (functionDecls info.dictCtors m)
   Tuple funcs st <- runStateT
     (traverse (lowerTopFunc info m.name isRoot) toLower)
-    { slot: 0, lifted: [], nextCode: 0 }
+    { slot: 0, lifted: [], nextCode: 0, forcedReps: Map.empty }
   let mFuncs = funcs <> st.lifted
   let
     pins = Set.fromFoldable
@@ -1048,3 +1059,13 @@ lowerModuleAgainstInfo shared isEntry target = do
   let hostRoots = if isEntry then [ target.name ] else []
   fragment <- lowerOneFragment info reachable crossModuleRefs hostRoots info.foreignSigs target
   pure { fragment, labels: Object.toUnfoldable tLabels, keyHomeModule: shared.keyHomeModule, crossModuleRefs }
+
+
+isIntType :: C.ExprType -> Boolean
+isIntType C.TypeInt = true
+isIntType C.TypeChar = true
+isIntType _ = false
+
+isNumberType :: C.ExprType -> Boolean
+isNumberType C.TypeNumber = true
+isNumberType _ = false
