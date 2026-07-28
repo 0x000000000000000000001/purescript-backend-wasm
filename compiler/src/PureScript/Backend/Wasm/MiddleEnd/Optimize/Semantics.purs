@@ -23,6 +23,7 @@ import Control.Monad.State (State, get, modify_, put, runState)
 import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Lazy (Lazy, defer, force)
+import PureScript.CoreFn as C
 import Data.List (List(..), (:))
 import Data.List as List
 import Data.Map (Map)
@@ -71,7 +72,7 @@ data Sem
   | SShared (Qualified String) Sem
   | SNeu Neu
 
-type RecB = { meta :: Maybe Meta, ident :: String, expr :: Sem }
+type RecB = { meta :: Maybe Meta, type :: Maybe C.ExprType, ident :: String, expr :: Sem }
 
 -- | Stuck computations. Their compound children are themselves `Sem`, so reduction can
 -- | still have happened *inside* them even though the head is stuck.
@@ -105,7 +106,7 @@ normalize ctx e =
     defs = Array.fromFoldable (List.reverse st.defs)
   in
     if Array.null defs then body
-    else M.Let (map (\(Tuple n ex) -> M.NonRec Nothing n ex) defs) body
+    else M.Let (map (\(Tuple n ex) -> M.NonRec Nothing Nothing n ex) defs) body
   where
   initialQ = { counter: 0, shared: Map.empty, defs: Nil }
 
@@ -407,7 +408,7 @@ combine = case _, _ of
 evalLet :: Ctx -> Map String (Lazy Sem) -> Set String -> Env -> Array M.Bind -> M.Expr -> Sem
 evalLet ctx memo visited env binds body = case Array.uncons binds of
   Nothing -> eval ctx memo visited env body
-  Just { head: M.NonRec _ x rhs, tail } ->
+  Just { head: M.NonRec _ _ x rhs, tail } ->
     let
       rhsSem = eval ctx memo visited env rhs
       rest e = evalLet ctx memo visited e tail body
@@ -417,7 +418,7 @@ evalLet ctx memo visited env binds body = case Array.uncons binds of
   Just { head: M.Rec rs, tail } ->
     let
       env' = Array.foldl (\e r -> Map.insert r.ident (SNeu (NLocal r.ident)) e) env rs
-      rs' = map (\r -> { meta: r.meta, ident: r.ident, expr: eval ctx memo visited env' r.expr }) rs
+      rs' = map (\r -> { meta: r.meta, type: r.type, ident: r.ident, expr: eval ctx memo visited env' r.expr }) rs
     in
       SLetRec rs' (evalLet ctx memo visited env' tail body)
 
@@ -462,9 +463,9 @@ quote pctx sem = case sem of
     rhs' <- quote pctx rhs
     x' <- fresh x
     body <- quote pctx (k (SNeu (NLocal x')))
-    pure (M.Let [ M.NonRec Nothing x' rhs' ] body)
+    pure (M.Let [ M.NonRec Nothing Nothing x' rhs' ] body)
   SLetRec rs body -> do
-    rs' <- traverse (\r -> (\e -> { meta: r.meta, ident: r.ident, expr: e }) <$> quote pctx r.expr) rs
+    rs' <- traverse (\r -> (\e -> { meta: r.meta, type: r.type, ident: r.ident, expr: e }) <$> quote pctx r.expr) rs
     body' <- quote pctx body
     pure (M.Let [ M.Rec rs' ] body')
   -- ADR 0035 Layer C: an unfolded candidate that survived to `quote` was used *as a value* (a

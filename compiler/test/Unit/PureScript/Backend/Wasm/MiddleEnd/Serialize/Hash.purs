@@ -16,10 +16,10 @@ import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual, shouldNotEqual)
 
 modA :: M.Module
-modA = { name: [ "A" ], decls: [ M.NonRec Nothing "x" (M.Lit (LitInt 1)) ] }
+modA = { name: [ "A" ], decls: [ M.NonRec Nothing Nothing "x" (M.Lit (LitInt 1)) ] }
 
 modB :: M.Module
-modB = { name: [ "A" ], decls: [ M.NonRec Nothing "x" (M.Lit (LitInt 2)) ] }
+modB = { name: [ "A" ], decls: [ M.NonRec Nothing Nothing "x" (M.Lit (LitInt 2)) ] }
 
 spec :: Spec Unit
 spec = describe "PureScript.Backend.Wasm.MiddleEnd.Serialize.Hash" do

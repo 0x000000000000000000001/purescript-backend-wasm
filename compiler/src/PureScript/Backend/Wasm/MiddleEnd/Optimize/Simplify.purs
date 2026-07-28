@@ -121,7 +121,7 @@ simplifyExpr ctx = fixpoint maxPasses
     }
 
   passBind = case _ of
-    M.NonRec meta i e -> M.NonRec meta i (pass e)
+    M.NonRec meta t i e -> M.NonRec meta t i (pass e)
     M.Rec rs -> M.Rec (map (\r -> r { expr = pass r.expr }) rs)
 
   step = case _ of
@@ -197,21 +197,21 @@ simplifyExpr ctx = fixpoint maxPasses
     -- partial application a dictionary method resolves to (`let cmp =
     -- ordIntImpl(LT, EQ, GT) in … cmp(x, y) …`) flow into its one application and
     -- saturate, instead of staying a heap-allocated closure called via `call_ref`
-    M.Let [ M.NonRec _ x e ] body
+    M.Let [ M.NonRec _ _ x e ] body
       | occurrences x body <= 1, exprPure pctx e -> Just (substMany (Map.singleton x e) body)
     -- inline a let-bound record literal whose fields are all trivial (vars/scalars),
     -- even when used several times: duplicating trivial fields is free, and it lets
     -- the accessor rule below project each `.l` directly — so an intermediate record
     -- (e.g. a State step's `{ state, value }`) never allocates. Safe to substitute now
     -- that `substMany` is capture-avoiding (its `s` field can sit under a `\s`).
-    M.Let [ M.NonRec _ x e ] body
+    M.Let [ M.NonRec _ _ x e ] body
       | trivialRecord e -> Just (substMany (Map.singleton x e) body)
     -- inline a let-bound *small lambda* even when used several times: duplicating a
     -- lambda copies code, not runtime work (the work is its eventual application), and
     -- a small one is cheap to copy — this collapses the residual `let bind = … in
     -- bind(…, … bind(…))` that `Effect`'s `map`/`apply` reduce to (the `ap`/`liftA1`
     -- chain uses the impurified `bind` twice), so each copy then saturates (ADR 0015).
-    M.Let [ M.NonRec _ x e ] body
+    M.Let [ M.NonRec _ _ x e ] body
       | smallLambda e -> Just (substMany (Map.singleton x e) body)
     M.Accessor l (M.Lit (LitObject kvs)) -> lookupField l kvs
     -- project a method out of a known plain-record instance by name
@@ -335,7 +335,7 @@ lookupField l = Array.findMap \(Tuple k v) -> if k == l then Just v else Nothing
 
 isNonRec :: M.Bind -> Boolean
 isNonRec = case _ of
-  M.NonRec _ _ _ -> true
+  M.NonRec _ _ _ _ -> true
   M.Rec _ -> false
 
 -- | A record literal all of whose field values are trivial (a variable or a scalar
@@ -374,7 +374,7 @@ nodeCount = case _ of
     Right e -> nodeCount e
     Left gs -> sum (map (\g -> nodeCount g.guard + nodeCount g.expression) gs)
   bindNodes = case _ of
-    M.NonRec _ _ e -> nodeCount e
+    M.NonRec _ _ _ e -> nodeCount e
     M.Rec rs -> sum (map (nodeCount <<< _.expr) rs)
 
 trivialExpr :: M.Expr -> Boolean
@@ -439,7 +439,7 @@ boolCase cond t f =
     ]
 
 zeroAnn :: Ann
-zeroAnn = { span: { start: origin, end: origin }, meta: Nothing }
+zeroAnn = { span: { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }, meta: Nothing, type: Nothing }
   where
   origin = { line: 0, column: 0 }
 
@@ -466,7 +466,7 @@ occurrences x = go
     Right e -> go e
     Left gs -> sum (map (\g -> go g.guard + go g.expression) gs)
   goBind = case _ of
-    M.NonRec _ _ e -> go e
+    M.NonRec _ _ _ e -> go e
     M.Rec rs -> sum (map (go <<< _.expr) rs)
 
 -- substitution ----------------------------------------------------------------
@@ -518,7 +518,7 @@ substMany subs0 = go (scopeOf subs0) subs0
             Left gs -> Left (map (\g -> { guard: go sc.inScope sc.subs g.guard, expression: go sc.inScope sc.subs g.expression }) gs)
         }
   goBind sc = case _ of
-    M.NonRec meta i e -> M.NonRec meta (renameWith sc.renames i) (go sc.inScope sc.subs e)
+    M.NonRec meta t i e -> M.NonRec meta t (renameWith sc.renames i) (go sc.inScope sc.subs e)
     M.Rec rs -> M.Rec (map (\r -> r { ident = renameWith sc.renames r.ident, expr = go sc.inScope sc.subs r.expr }) rs)
 
 type Scope = { renames :: Map String String, subs :: Map String M.Expr, inScope :: Set String }
@@ -571,7 +571,7 @@ allIdents = case _ of
   M.Let bs body -> Set.union (foldMap bindIdents bs) (allIdents body)
   where
   bindIdents = case _ of
-    M.NonRec _ i e -> Set.insert i (allIdents e)
+    M.NonRec _ _ i e -> Set.insert i (allIdents e)
     M.Rec rs -> foldMap (\r -> Set.insert r.ident (allIdents r.expr)) rs
 
 altIdents :: M.Alt -> Set String
@@ -600,12 +600,12 @@ litExprs = case _ of
 
 boundNames :: M.Bind -> Array String
 boundNames = case _ of
-  M.NonRec _ i _ -> [ i ]
+  M.NonRec _ _ i _ -> [ i ]
   M.Rec rs -> map _.ident rs
 
 bindExprs :: M.Bind -> Array M.Expr
 bindExprs = case _ of
-  M.NonRec _ _ e -> [ e ]
+  M.NonRec _ _ _ e -> [ e ]
   M.Rec rs -> map _.expr rs
 
 mapLit :: (M.Expr -> M.Expr) -> Literal M.Expr -> Literal M.Expr

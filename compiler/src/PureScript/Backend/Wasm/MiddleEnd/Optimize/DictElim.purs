@@ -59,7 +59,7 @@ buildCtx modules =
   }
   where
   recordFieldsOf modName = case _ of
-    M.NonRec _ ident (M.Lit (LitObject kvs)) -> [ Tuple (key modName ident) kvs ]
+    M.NonRec _ _ ident (M.Lit (LitObject kvs)) -> [ Tuple (key modName ident) kvs ]
     M.Rec rs -> Array.mapMaybe recRecord rs
       where
       recRecord r = case r.expr of
@@ -116,7 +116,7 @@ summarize keepKeys m = m { decls = Array.filter keep m.decls }
   where
   keep = case _ of
     M.Rec _ -> true -- recursive instance / dictionary groups (ADR 0008), incl. effectful loops
-    M.NonRec meta ident rhs ->
+    M.NonRec meta t ident rhs ->
       -- a whole-program inline candidate or an effectful binding …
       Set.member (key m.name ident) keepKeys
         || isDictCtor meta
@@ -162,7 +162,7 @@ simplifyModule :: Ctx -> M.Module -> M.Module
 simplifyModule ctx m = m { decls = map go m.decls }
   where
   go = case _ of
-    M.NonRec meta i e -> M.NonRec meta i (reduce ctx e)
+    M.NonRec meta t i e -> M.NonRec meta t i (reduce ctx e)
     M.Rec rs -> M.Rec (map (\r -> r { expr = reduce ctx r.expr }) rs)
 
 -- classification --------------------------------------------------------------
@@ -183,7 +183,7 @@ type BindInfo =
 
 infoOf :: Set String -> ModuleName -> M.Bind -> Maybe BindInfo
 infoOf ctors modName = case _ of
-  M.NonRec meta ident rhs ->
+  M.NonRec meta t ident rhs ->
     let
       k = key modName ident
       rs = references rhs
@@ -231,14 +231,14 @@ isAbs = case _ of
 
 dictCtorName :: ModuleName -> M.Bind -> Maybe String
 dictCtorName modName = case _ of
-  M.NonRec (Just IsTypeClassConstructor) ident _ -> Just (key modName ident)
+  M.NonRec (Just IsTypeClassConstructor) _ ident _ -> Just (key modName ident)
   _ -> Nothing
 
 -- | Rigid data constructors are the top-level `Constructor` declarations; their
 -- | name is matched by `case` in the simplifier.
 dataCtorName :: ModuleName -> M.Bind -> Maybe String
 dataCtorName modName = case _ of
-  M.NonRec _ ident (M.Constructor _ _ _) -> Just (key modName ident)
+  M.NonRec _ _ ident (M.Constructor _ _ _) -> Just (key modName ident)
   _ -> Nothing
 
 -- keys ------------------------------------------------------------------------

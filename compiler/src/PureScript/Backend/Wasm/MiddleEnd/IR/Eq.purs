@@ -96,7 +96,7 @@ eqBinds = zipChildren eqBind
 
 eqBind :: Bind -> Bind -> Maybe (List (Tuple Expr Expr))
 eqBind = case _, _ of
-  NonRec m1 i1 e1, NonRec m2 i2 e2 -> if m1 == m2 && i1 == i2 then Just (Tuple e1 e2 : Nil) else Nothing
+  NonRec m1 _ i1 e1, NonRec m2 _ i2 e2 -> if m1 == m2 && i1 == i2 then Just (Tuple e1 e2 : Nil) else Nothing
   Rec r1, Rec r2 ->
     if Array.length r1 == Array.length r2 && all identity (Array.zipWith (\a b -> a.meta == b.meta && a.ident == b.ident) r1 r2) then Just (zipPairs (map _.expr r1) (map _.expr r2))
     else Nothing

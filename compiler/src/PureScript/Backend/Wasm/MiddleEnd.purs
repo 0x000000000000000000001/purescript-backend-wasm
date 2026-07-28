@@ -608,7 +608,7 @@ modName m = joinWith "." m.name
 
 declKeys :: M.Module -> Array String
 declKeys m = m.decls >>= case _ of
-  M.NonRec _ i _ -> [ key m.name i ]
+  M.NonRec _ _ i _ -> [ key m.name i ]
   M.Rec rs -> map (\r -> key m.name r.ident) rs
 
 -- | The cross-module references that order a module after its dependencies. A
@@ -622,7 +622,7 @@ declKeys m = m.decls >>= case _ of
 -- | module; its consuming-module references are resolved when the consumer inlines it.
 declRefs :: M.Module -> Array String
 declRefs m = m.decls >>= case _ of
-  M.NonRec _ i e -> if isSpec i then [] else references e
+  M.NonRec _ _ i e -> if isSpec i then [] else references e
   M.Rec rs -> rs >>= \r -> if isSpec r.ident then [] else references r.expr
   where
   isSpec i = contains (Pattern "$spec") i
@@ -636,7 +636,7 @@ declRefs m = m.decls >>= case _ of
 -- | the optimized bodies), so reachability is not polluted by the worker's over-export.
 declRefMap :: M.Module -> Array (Tuple String (Array String))
 declRefMap m = m.decls >>= case _ of
-  M.NonRec _ i e -> [ Tuple (key m.name i) (Array.nub (references e)) ]
+  M.NonRec _ _ i e -> [ Tuple (key m.name i) (Array.nub (references e)) ]
   M.Rec rs -> map (\r -> Tuple (key m.name r.ident) (Array.nub (references r.expr))) rs
 
 -- | Optimize a single self-contained module (its own bindings only). A convenience

@@ -35,7 +35,7 @@ import Effect.Exception (error, message, throwException, try)
 import Effect.Unsafe (unsafePerformEffect)
 import PureScript.Backend.Wasm.MiddleEnd.IR as M
 import PureScript.Backend.Wasm.MiddleEnd.Serialize.Bytes (Reader, Writer, finish, getInt, getNumber, getString, getU8, newReader, newWriter, putInt, putNumber, putString, putU8)
-import PureScript.CoreFn (Binder(..), ConstructorType(..), Literal(..), Meta(..), Qualified(..))
+import PureScript.CoreFn (Bind(..), Binder(..), CaseAlternative, ConstructorType(..), ExprType(..), Ident, Literal(..), Meta(..), ProperName, Qualified(..), RecordUpdate)
 
 -- | Serialize a module's optimized MIR to the `.pmo` body bytes. Pure and total: the
 -- | same module always yields the same bytes (the internal `Effect` only drives the
@@ -143,22 +143,43 @@ getMeta r = do
     5 -> pure IsSyntheticApp
     _ -> fail "meta tag"
 
-putAnn :: Writer -> { span :: { start :: { line :: Int, column :: Int }, end :: { line :: Int, column :: Int } }, meta :: Maybe Meta } -> Effect Unit
+putExprType :: Writer -> ExprType -> Effect Unit
+putExprType w = case _ of
+  TypeInt -> putU8 w 0
+  TypeNumber -> putU8 w 1
+  TypeBoolean -> putU8 w 2
+  TypeChar -> putU8 w 3
+  TypeOther -> putU8 w 4
+
+getExprType :: Reader -> Effect ExprType
+getExprType r = do
+  t <- getU8 r
+  case t of
+    0 -> pure TypeInt
+    1 -> pure TypeNumber
+    2 -> pure TypeBoolean
+    3 -> pure TypeChar
+    4 -> pure TypeOther
+    _ -> fail "exprType tag"
+
+putAnn :: Writer -> { span :: { start :: { line :: Int, column :: Int }, end :: { line :: Int, column :: Int } }, meta :: Maybe Meta, type :: Maybe ExprType } -> Effect Unit
 putAnn w a = do
   putInt w a.span.start.line
   putInt w a.span.start.column
   putInt w a.span.end.line
   putInt w a.span.end.column
   putMaybe w putMeta a.meta
+  putMaybe w putExprType a.type
 
-getAnn :: Reader -> Effect { span :: { start :: { line :: Int, column :: Int }, end :: { line :: Int, column :: Int } }, meta :: Maybe Meta }
+getAnn :: Reader -> Effect { span :: { start :: { line :: Int, column :: Int }, end :: { line :: Int, column :: Int } }, meta :: Maybe Meta, type :: Maybe ExprType }
 getAnn r = do
-  sl <- getInt r
-  sc <- getInt r
-  el <- getInt r
-  ec <- getInt r
+  l1 <- getInt r
+  c1 <- getInt r
+  l2 <- getInt r
+  c2 <- getInt r
   meta <- getMaybe r getMeta
-  pure { span: { start: { line: sl, column: sc }, end: { line: el, column: ec } }, meta }
+  typeOpt <- getMaybe r getExprType
+  pure { span: { start: { line: l1, column: c1 }, end: { line: l2, column: c2 } }, meta, type: typeOpt }
 
 putLiteral :: forall a. Writer -> (Writer -> a -> Effect Unit) -> Literal a -> Effect Unit
 putLiteral w put = case _ of
@@ -269,26 +290,27 @@ getGuard r = do
 
 putBind :: Writer -> M.Bind -> Effect Unit
 putBind w = case _ of
-  M.NonRec meta ident e -> putU8 w 0 *> putMaybe w putMeta meta *> putString w ident *> putExpr w e
+  M.NonRec meta typeOpt ident e -> putU8 w 0 *> putMaybe w putMeta meta *> putMaybe w putExprType typeOpt *> putString w ident *> putExpr w e
   M.Rec rs -> putU8 w 1 *> putArray w putRec rs
 
 getBind :: Reader -> Effect M.Bind
 getBind r = do
   t <- getU8 r
   case t of
-    0 -> M.NonRec <$> getMaybe r getMeta <*> getString r <*> getExpr r
+    0 -> M.NonRec <$> getMaybe r getMeta <*> getMaybe r getExprType <*> getString r <*> getExpr r
     1 -> M.Rec <$> getArray r getRec
     _ -> fail "bind tag"
 
 putRec :: Writer -> M.RecBinding -> Effect Unit
-putRec w rb = putMaybe w putMeta rb.meta *> putString w rb.ident *> putExpr w rb.expr
+putRec w rb = putMaybe w putMeta rb.meta *> putMaybe w putExprType rb.type *> putString w rb.ident *> putExpr w rb.expr
 
 getRec :: Reader -> Effect M.RecBinding
 getRec r = do
   meta <- getMaybe r getMeta
+  typeOpt <- getMaybe r getExprType
   ident <- getString r
   expr <- getExpr r
-  pure { meta, ident, expr }
+  pure { meta, type: typeOpt, ident, expr }
 
 putModule :: Writer -> M.Module -> Effect Unit
 putModule w m = putModuleName w m.name *> putArray w putBind m.decls

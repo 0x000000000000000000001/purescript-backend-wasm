@@ -26,7 +26,7 @@ spec = describe "PureScript.Backend.Wasm.MiddleEnd.Optimize.LambdaLift" do
     -- one lifted supercombinator is prepended before the original `f`
     Array.length lifted.decls `shouldEqual` 2
     case Array.head lifted.decls of
-      Just (M.NonRec _ name (M.Abs params body))
+      Just (M.NonRec _ _ name (M.Abs params body))
         | contains (Pattern "$lift") name -> do
             -- it captures nothing here, taking only `go`'s own parameter
             params `shouldEqual` [ "m" ]
@@ -49,7 +49,7 @@ spec = describe "PureScript.Backend.Wasm.MiddleEnd.Optimize.LambdaLift" do
     Array.length lifted.decls `shouldEqual` 3
     let
       isLifted = case _ of
-        M.NonRec _ name (M.Abs params _) | contains (Pattern "$lift") name -> Just params
+        M.NonRec _ _ name (M.Abs params _) | contains (Pattern "$lift") name -> Just params
         _ -> Nothing
       liftedParams = Array.mapMaybe isLifted lifted.decls
     Array.length liftedParams `shouldEqual` 2

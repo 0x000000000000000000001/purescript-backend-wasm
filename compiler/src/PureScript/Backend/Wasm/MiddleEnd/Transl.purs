@@ -24,8 +24,8 @@ translModule m = { name: m.name, decls: map translBind m.decls }
 
 translBind :: C.Bind -> M.Bind
 translBind = case _ of
-  C.NonRec ann ident e -> M.NonRec (bindMeta ann.meta e) ident (translExpr e)
-  C.Rec rs -> M.Rec (map (\r -> { meta: bindMeta r.ann.meta r.expr, ident: r.ident, expr: translExpr r.expr }) rs)
+  C.NonRec ann ident e -> M.NonRec (bindMeta ann.meta e) ann.type ident (translExpr e)
+  C.Rec rs -> M.Rec (map (\r -> { meta: bindMeta r.ann.meta r.expr, type: r.ann.type, ident: r.ident, expr: translExpr r.expr }) rs)
 
 -- | The `Meta` to keep on a binding. A binding's own annotation carries it (e.g. a
 -- | type-class dictionary constructor's `IsTypeClassConstructor`); but a user

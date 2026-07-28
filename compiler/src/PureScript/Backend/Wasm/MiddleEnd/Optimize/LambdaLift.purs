@@ -54,7 +54,7 @@ lambdaLiftModule m =
 
 liftBind :: ModuleName -> M.Bind -> LiftM M.Bind
 liftBind modName = case _ of
-  M.NonRec meta ident e -> M.NonRec meta ident <$> liftExpr modName e
+  M.NonRec meta t ident e -> M.NonRec meta t ident <$> liftExpr modName e
   M.Rec rs -> M.Rec <$> traverse (\r -> (\e -> r { expr = e }) <$> liftExpr modName r.expr) rs
 
 liftExpr :: ModuleName -> M.Expr -> LiftM M.Expr
@@ -126,7 +126,7 @@ liftSelfRecFn modName ident params body = do
   -- (the captures resolve to the leading parameters there), then lift nested locals
   body' <- liftExpr modName (substMany (Map.singleton ident repl) body)
   let lambda' = M.Abs (frees <> params) body'
-  modify_ \s -> s { lifted = Array.snoc s.lifted (M.NonRec Nothing liftedIdent lambda') }
+  modify_ \s -> s { lifted = Array.snoc s.lifted (M.NonRec Nothing Nothing liftedIdent lambda') }
   pure (Tuple ident repl)
 
 type RecMember = { ident :: String, params :: Array String, body :: M.Expr }
@@ -158,7 +158,7 @@ liftMutualRecGroup modName members = do
     -- any nested locals in the (now parameter-captured) body
     body' <- liftExpr modName (applySubs subs m.body)
     let lambda' = M.Abs (frees <> m.params) body'
-    modify_ \s -> s { lifted = Array.snoc s.lifted (M.NonRec Nothing (liftedName m.ident) lambda') }
+    modify_ \s -> s { lifted = Array.snoc s.lifted (M.NonRec Nothing Nothing (liftedName m.ident) lambda') }
   pure subs
 
 -- substitution ---------------------------------------------------------------
@@ -168,7 +168,7 @@ applySubs subs = substMany (Map.fromFoldable subs)
 
 substBind :: Array Sub -> M.Bind -> M.Bind
 substBind subs = case _ of
-  M.NonRec meta i e -> M.NonRec meta i (applySubs subs e)
+  M.NonRec meta t i e -> M.NonRec meta t i (applySubs subs e)
   M.Rec rs -> M.Rec (map (\r -> r { expr = applySubs subs r.expr }) rs)
 
 localVar :: String -> M.Expr

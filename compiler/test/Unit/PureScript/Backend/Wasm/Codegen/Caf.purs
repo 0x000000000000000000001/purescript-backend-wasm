@@ -8,6 +8,7 @@ import Prelude
 
 import Data.Array as Array
 import Data.Map as Map
+import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Foreign.Object as Object
 import PureScript.Backend.Wasm.Codegen.Caf (CafPlan, cafPlan)
@@ -22,7 +23,10 @@ prog funcs = { funcs, labels: [], exportSigs: Object.empty }
 -- An arity-0 CAF whose body references each named CAF in turn (`RCallKnown … []`).
 cafFn :: String -> Array String -> IRFunc
 cafFn name deps =
-  { name: FuncName name, params: [], result: Boxed, body: refs 0 deps, export: Nothing, localCount: Array.length deps + 1 }
+  { name: FuncName name, params: [], result: Boxed, body: refs 0 deps, export: Nothing
+    , localCount: Array.length deps + 1
+    , forcedReps: Map.empty
+    }
   where
   refs i ds = case Array.uncons ds of
     Nothing -> Return (ALitInt 0)
@@ -73,8 +77,8 @@ spec = describe "Codegen.Caf.cafPlan" do
 
   it "excludes a function (arity > 0) and a closure-ref-typed value" do
     let
-      f = { name: FuncName "f", params: [ Boxed ], result: Boxed, body: Return (ALitInt 0), export: Nothing, localCount: 1 }
-      g = { name: FuncName "g", params: [], result: CloRef, body: Return (ALitInt 0), export: Nothing, localCount: 1 }
+      f = { name: FuncName "f", params: [ Boxed ], result: Boxed, body: Return (ALitInt 0), export: Nothing, localCount: 1, forcedReps: Map.empty }
+      g = { name: FuncName "g", params: [], result: CloRef, body: Return (ALitInt 0), export: Nothing, localCount: 1, forcedReps: Map.empty }
       plan = cafPlan (prog [ f, g ])
     hasGlobal "f" plan `shouldEqual` false
     hasGlobal "g" plan `shouldEqual` false

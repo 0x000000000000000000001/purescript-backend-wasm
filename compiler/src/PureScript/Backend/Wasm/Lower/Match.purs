@@ -414,9 +414,7 @@ wildcards :: Int -> Array C.Binder
 wildcards n = Array.replicate n (C.NullBinder synthAnn)
 
 synthAnn :: C.Ann
-synthAnn = { meta: Nothing, span: { start: origin, end: origin } }
-  where
-  origin = { line: 0, column: 0 }
+synthAnn = { meta: Nothing, type: Nothing, span: { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } } }
 
 -- replace the element at `col` with `newElems` (splice); used for both occurrences
 -- and pattern columns so they stay aligned.

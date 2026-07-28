@@ -76,7 +76,7 @@ specializeProgram modules =
     funcs = Map.fromFoldable (modules >>= moduleFuncs)
     existing = Set.fromFoldable (modules >>= \m -> m.decls >>= declIdents)
     Tuple modules' st = runState (traverse (specModule funcs) modules) { existing, specs: Map.empty }
-    specsOf mn = Array.mapMaybe (\e -> if e.modName == mn then Just (M.Rec [ { meta: Nothing, ident: e.ident, expr: e.expr } ]) else Nothing) (Map.values st.specs # Array.fromFoldable)
+    specsOf mn = Array.mapMaybe (\e -> if e.modName == mn then Just (M.Rec [ { meta: Nothing, type: Nothing, ident: e.ident, expr: e.expr } ]) else Nothing) (Map.values st.specs # Array.fromFoldable)
   in
     map (\m -> m { decls = m.decls <> specsOf m.name }) modules'
 
@@ -94,7 +94,7 @@ specializeModule context m =
     existing = Set.fromFoldable (m.decls >>= declIdents)
     Tuple m' st = runState (specModule funcs m) { existing, specs: Map.empty }
     specs = Array.mapMaybe
-      (\e -> if e.modName == m.name then Just (M.Rec [ { meta: Nothing, ident: e.ident, expr: e.expr } ]) else Nothing)
+      (\e -> if e.modName == m.name then Just (M.Rec [ { meta: Nothing, type: Nothing, ident: e.ident, expr: e.expr } ]) else Nothing)
       (Map.values st.specs # Array.fromFoldable)
   in
     m' { decls = m'.decls <> specs }
@@ -119,7 +119,7 @@ moduleFuncs m = Array.mapMaybe (funcOf m.name) m.decls
 -- groups are not handled (their static-argument analysis is more involved)
 funcOf :: ModuleName -> M.Bind -> Maybe (Tuple String FuncInfo)
 funcOf modName = case _ of
-  M.NonRec _ ident (M.Abs params body) -> Just (mk modName ident params body)
+  M.NonRec _ _ ident (M.Abs params body) -> Just (mk modName ident params body)
   M.Rec [ r ] | M.Abs params body <- r.expr -> Just (mk modName r.ident params body)
   _ -> Nothing
   where
@@ -158,7 +158,7 @@ isApplied p = go
     Right e -> go e
     Left gs -> Array.any (\g -> go g.guard || go g.expression) gs
   bindGo = case _ of
-    M.NonRec _ _ e -> go e
+    M.NonRec _ _ _ e -> go e
     M.Rec rs -> Array.any (go <<< _.expr) rs
 
 -- every self-call to `qname` passes `Var p` at argument index `i`
@@ -185,7 +185,7 @@ allSelfCallsPass qname i p = go
     Right e -> go e
     Left gs -> Array.all (\g -> go g.guard && go g.expression) gs
   bindGo = case _ of
-    M.NonRec _ _ e -> go e
+    M.NonRec _ _ _ e -> go e
     M.Rec rs -> Array.all (go <<< _.expr) rs
 
 -- transformation --------------------------------------------------------------
@@ -200,7 +200,7 @@ specModule funcs m = do
 
 specBind :: Map String FuncInfo -> ModuleName -> M.Bind -> S M.Bind
 specBind funcs home = case _ of
-  M.NonRec meta i e -> M.NonRec meta i <$> specExpr funcs home e
+  M.NonRec meta t i e -> M.NonRec meta t i <$> specExpr funcs home e
   M.Rec rs -> M.Rec <$> traverse (\r -> (\e -> r { expr = e }) <$> specExpr funcs home r.expr) rs
 
 specExpr :: Map String FuncInfo -> ModuleName -> M.Expr -> S M.Expr
@@ -231,7 +231,7 @@ specExpr funcs home = go
     Right e -> (\e' -> alt { result = Right e' }) <$> go e
     Left gs -> (\gs' -> alt { result = Left gs' }) <$> traverse (\g -> { guard: _, expression: _ } <$> go g.guard <*> go g.expression) gs
   goBind = case _ of
-    M.NonRec meta i e -> M.NonRec meta i <$> go e
+    M.NonRec meta t i e -> M.NonRec meta t i <$> go e
     M.Rec rs -> M.Rec <$> traverse (\r -> (\e -> r { expr = e }) <$> go r.expr) rs
 
 -- the first static function-parameter index whose argument is a lambda
@@ -290,7 +290,7 @@ freshSpecIdent base = do
 
 declIdents :: M.Bind -> Array String
 declIdents = case _ of
-  M.NonRec _ i _ -> [ i ]
+  M.NonRec _ _ i _ -> [ i ]
   M.Rec rs -> map _.ident rs
 
 -- rewrite every self-call `f(… pk …)` to `f$spec(frees…, … without pk …)`
@@ -317,7 +317,7 @@ rewriteSelfCalls fqname specName k frees = go
         Left gs -> Left (map (\g -> { guard: go g.guard, expression: go g.expression }) gs)
     }
   goBind = case _ of
-    M.NonRec meta i e -> M.NonRec meta i (go e)
+    M.NonRec meta t i e -> M.NonRec meta t i (go e)
     M.Rec rs -> M.Rec (map (\r -> r { expr = go r.expr }) rs)
 
 -- the lambda's free variables (its own parameters removed)
@@ -362,7 +362,7 @@ removeAt i arr = Array.take i arr <> Array.drop (i + 1) arr
 
 boundNames :: M.Bind -> Array String
 boundNames = case _ of
-  M.NonRec _ i _ -> [ i ]
+  M.NonRec _ _ i _ -> [ i ]
   M.Rec rs -> map _.ident rs
 
 mapLit :: (M.Expr -> M.Expr) -> Literal M.Expr -> Literal M.Expr

@@ -123,31 +123,37 @@ assignProgramReps pinned funcs = map (rewriteFunc sigs) funcs
   -- | The inferred type of every slot of `fn` (parameters read from the *current*
   -- | signature — not recomputed, which would recurse forever on a self-recursive
   -- | function — `Let` slots from their producer), given the current signatures.
-  localTypes s fn = Map.union paramTypes (collectProducers s Map.empty fn.body)
+  localTypes s fn = Map.union paramTypes (collectProducers s fn.forcedReps Map.empty fn.body)
     where
     sigParams = maybe [] _.params (Map.lookup fn.name s)
     paramTypes = Map.fromFoldable
       (Array.mapWithIndex (\i _ -> Tuple i (fromMaybe Bx (Array.index sigParams i))) fn.params)
 
   -- producer type of each `Let` slot
-  collectProducers s acc = case _ of
+  collectProducers s forcedReps acc = case _ of
     Return _ -> acc
-    Let (Slot slot) _ rhs k -> collectProducers s (Map.insert slot (producerTy s rhs) acc) k
+    Let (Slot slot) _ rhs k ->
+      let
+        ty = case Map.lookup slot forcedReps of
+          Just rep -> tyOfRep rep
+          Nothing -> producerTy s rhs
+      in
+        collectProducers s forcedReps (Map.insert slot ty acc) k
     Switch _ branches dflt ->
       let
-        acc1 = foldl (\a (Branch _ b) -> collectProducers s a b) acc branches
+        acc1 = foldl (\a (Branch _ b) -> collectProducers s forcedReps a b) acc branches
       in
-        maybe acc1 (collectProducers s acc1) dflt
+        maybe acc1 (collectProducers s forcedReps acc1) dflt
     LitSwitch _ branches dflt ->
       let
-        acc1 = foldl (\a (LitBranch _ b) -> collectProducers s a b) acc branches
+        acc1 = foldl (\a (LitBranch _ b) -> collectProducers s forcedReps a b) acc branches
       in
-        maybe acc1 (collectProducers s acc1) dflt
+        maybe acc1 (collectProducers s forcedReps acc1) dflt
     LetRec recBinds k ->
-      collectProducers s (foldl (\a (RecBind (Slot slot) _ _) -> Map.insert slot Bx a) acc recBinds) k
+      collectProducers s forcedReps (foldl (\a (RecBind (Slot slot) _ _) -> Map.insert slot Bx a) acc recBinds) k
     -- the join slot is kept boxed (ADR 0022); still descend into the producer's `Let`s
     LetJoin (Slot slot) _ producer k ->
-      collectProducers s (Map.insert slot Bx (collectProducers s acc producer)) k
+      collectProducers s forcedReps (Map.insert slot Bx (collectProducers s forcedReps acc producer)) k
 
   producerTy s = case _ of
     RPrim intr _ -> tyOfRep (primRep intr)
@@ -239,12 +245,19 @@ rewriteFunc sigs fn = fn
     CloRef -> CloRef
     _ | isCodeFunc -> origRep
     _ -> exportSafe (repOfTy (fromMaybe Bx (Array.index sig.params i)))
-  demands = collectDemands sigs Map.empty fn.body
+  demands = collectDemands fn.name sigs Map.empty fn.body
   countsFor s = fromMaybe emptyCounts (Map.lookup s demands)
   rewrite = case _ of
     Return a -> Return a
     Let slot@(Slot s) _ rhs k ->
-      Let slot (chooseRep (producerRep sigs rhs) (countsFor s)) rhs (rewrite k)
+      let
+        counts = countsFor s
+        rep = case Map.lookup s fn.forcedReps of
+          Just r | counts.inLoop -> r
+          Just _ -> chooseRep (producerRep sigs rhs) counts
+          Nothing -> chooseRep (producerRep sigs rhs) counts
+      in
+        Let slot rep rhs (rewrite k)
     Switch scrut branches dflt ->
       Switch scrut (map (\(Branch t b) -> Branch t (rewrite b)) branches) (map rewrite dflt)
     LitSwitch scrut branches dflt ->
@@ -255,10 +268,10 @@ rewriteFunc sigs fn = fn
 
 -- local slot rule -------------------------------------------------------------
 
-type Counts = { i32 :: Int, f64 :: Int, boxed :: Int }
+type Counts = { i32 :: Int, f64 :: Int, boxed :: Int, inLoop :: Boolean }
 
 emptyCounts :: Counts
-emptyCounts = { i32: 0, f64: 0, boxed: 0 }
+emptyCounts = { i32: 0, f64: 0, boxed: 0, inLoop: false }
 
 -- | Keep a local slot unboxed when its rhs produces it unboxed and at most one use
 -- | boxes it (so the choice never increases the number of boxing allocations).
@@ -281,12 +294,12 @@ producerRep sigs = case _ of
 
 -- | Tally, per local slot, the representation each of its uses demands (calls demand
 -- | the callee's parameter reps; returns the function's result rep).
-collectDemands :: Map FuncName Sig -> Map Int Counts -> AnfExpr -> Map Int Counts
-collectDemands sigs = go
+collectDemands :: FuncName -> Map FuncName Sig -> Map Int Counts -> AnfExpr -> Map Int Counts
+collectDemands currentFn sigs = go
   where
   go acc = case _ of
     Return atom -> demand Boxed atom acc
-    Let _ _ rhs k -> go (rhsDemands sigs acc rhs) k
+    Let _ _ rhs k -> go (rhsDemands currentFn sigs acc rhs) k
     Switch scrut branches dflt ->
       let
         acc1 = demand Boxed scrut acc
@@ -303,12 +316,18 @@ collectDemands sigs = go
       go (foldl (\a (RecBind _ _ env) -> boxedAll a env) acc recBinds) k
     LetJoin _ _ producer k -> go (go acc producer) k
 
-rhsDemands :: Map FuncName Sig -> Map Int Counts -> Rhs -> Map Int Counts
-rhsDemands sigs acc = case _ of
+rhsDemands :: FuncName -> Map FuncName Sig -> Map Int Counts -> Rhs -> Map Int Counts
+rhsDemands currentFn sigs acc = case _ of
   RPrim intr args -> foldlWithIndex (\i a at -> demand (operandRep intr i) at a) acc args
   RAtom at -> demand Boxed at acc
   RCallKnown name args ->
-    foldlWithIndex (\i a at -> demand (calleeParamRep sigs name i) at a) acc args
+    let 
+      acc1 = foldlWithIndex (\i a at -> demand (calleeParamRep sigs name i) at a) acc args
+    in if name == currentFn 
+       then foldl (\a at -> case at of
+                      AVar (Local (Slot i)) -> Map.insertWith mergeCounts i (emptyCounts { boxed = 1, inLoop = true }) a
+                      _ -> a) acc1 args
+       else acc1
   RCallForeign sig args ->
     foldlWithIndex (\i a at -> demand (maybe Boxed marshalRep (Array.index sig.params i)) at a) acc args
   RMkData _ sig fields -> foldlWithIndex (\i a at -> demand (fromMaybe Boxed (Array.index sig i)) at a) acc fields
@@ -342,7 +361,7 @@ demand rep atom acc = case atom of
     _ -> emptyCounts { boxed = 1 }
 
 mergeCounts :: Counts -> Counts -> Counts
-mergeCounts a b = { i32: a.i32 + b.i32, f64: a.f64 + b.f64, boxed: a.boxed + b.boxed }
+mergeCounts a b = { i32: a.i32 + b.i32, f64: a.f64 + b.f64, boxed: a.boxed + b.boxed, inLoop: a.inLoop || b.inLoop }
 
 litSwitchDemand :: Array LitBranch -> Rep
 litSwitchDemand branches = case Array.head branches of

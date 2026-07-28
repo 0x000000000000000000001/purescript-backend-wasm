@@ -24,11 +24,11 @@ roundTrips :: M.Module -> Either String M.Module
 roundTrips = encode >>> decode
 
 ann0 :: Ann
-ann0 = { span: { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }, meta: Nothing }
+ann0 = { span: { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }, meta: Nothing, type: Nothing }
 
 -- | A binder annotation with a non-zero span and meta, so span/meta fidelity is tested.
 ann1 :: Ann
-ann1 = { span: { start: { line: 1, column: 2 }, end: { line: 3, column: 4 } }, meta: Just IsNewtype }
+ann1 = { span: { start: { line: 1, column: 2 }, end: { line: 3, column: 4 } }, meta: Just IsNewtype, type: Nothing }
 
 local :: String -> M.Expr
 local x = M.Var (Qualified Nothing x)
@@ -39,24 +39,24 @@ full :: M.Module
 full =
   { name: [ "Test", "Coverage" ]
   , decls:
-      [ M.NonRec Nothing "litInt" (M.Lit (LitInt (-42)))
-      , M.NonRec (Just IsNewtype) "qual" (M.Var (Qualified (Just [ "Data", "Maybe" ]) "Just"))
-      , M.NonRec (Just (IsConstructor SumType [ "a", "b" ])) "ctor" (M.Constructor "T" "C" [ "a", "b" ])
-      , M.NonRec (Just IsTypeClassConstructor) "absApp"
+      [ M.NonRec Nothing Nothing "litInt" (M.Lit (LitInt (-42)))
+      , M.NonRec (Just IsNewtype) Nothing "qual" (M.Var (Qualified (Just [ "Data", "Maybe" ]) "Just"))
+      , M.NonRec (Just (IsConstructor SumType [ "a", "b" ])) Nothing "ctor" (M.Constructor "T" "C" [ "a", "b" ])
+      , M.NonRec (Just IsTypeClassConstructor) Nothing "absApp"
           (M.Abs [ "x", "y" ] (M.App (local "x") [ local "y", M.Lit (LitBoolean true) ]))
-      , M.NonRec (Just IsForeign) "acc" (M.Accessor "field" (local "rec"))
-      , M.NonRec (Just IsWhere) "monoUpdate"
+      , M.NonRec (Just IsForeign) Nothing "acc" (M.Accessor "field" (local "rec"))
+      , M.NonRec (Just IsWhere) Nothing "monoUpdate"
           (M.Update (local "rec") (Just [ "keep1", "keep2" ]) [ Tuple "a" (M.Lit (LitInt 1)), Tuple "b" (M.Lit (LitNumber 2.5)) ])
-      , M.NonRec (Just IsSyntheticApp) "polyUpdate"
+      , M.NonRec (Just IsSyntheticApp) Nothing "polyUpdate"
           (M.Update (local "rec") Nothing [ Tuple "x" (M.Lit (LitString "hi")) ])
-      , M.NonRec Nothing "perform"
+      , M.NonRec Nothing Nothing "perform"
           (M.Perform (M.App (M.Var (Qualified (Just [ "Effect" ]) "pure")) [ M.Lit (LitChar 'q') ]))
-      , M.NonRec Nothing "letBind"
-          (M.Let [ M.NonRec Nothing "a" (M.Lit (LitInt 1)) ] (local "a"))
-      , M.NonRec Nothing "arr" (M.Lit (LitArray [ M.Lit (LitInt 1), M.Lit (LitInt 2) ]))
-      , M.NonRec Nothing "obj"
+      , M.NonRec Nothing Nothing "letBind"
+          (M.Let [ M.NonRec Nothing Nothing "a" (M.Lit (LitInt 1)) ] (local "a"))
+      , M.NonRec Nothing Nothing "arr" (M.Lit (LitArray [ M.Lit (LitInt 1), M.Lit (LitInt 2) ]))
+      , M.NonRec Nothing Nothing "obj"
           (M.Lit (LitObject [ Tuple "k1" (M.Lit (LitString "ünïcödé 🎉")), Tuple "k2" (M.Lit (LitArray [])) ]))
-      , M.NonRec Nothing "caseExpr"
+      , M.NonRec Nothing Nothing "caseExpr"
           ( M.Case [ local "s1", local "s2" ]
               [ { binders: [ VarBinder ann1 "p", NullBinder ann0 ], result: Right (M.Lit (LitInt 0)) }
               , { binders:
@@ -68,8 +68,8 @@ full =
               ]
           )
       , M.Rec
-          [ { meta: Nothing, ident: "f", expr: M.Abs [ "n" ] (M.App (local "g") [ local "n" ]) }
-          , { meta: Just IsNewtype, ident: "g", expr: local "f" }
+          [ { meta: Nothing, type: Nothing, ident: "f", expr: M.Abs [ "n" ] (M.App (local "g") [ local "n" ]) }
+          , { meta: Just IsNewtype, type: Nothing, ident: "g", expr: local "f" }
           ]
       ]
   }
@@ -81,7 +81,7 @@ full =
 deepNest :: M.Module
 deepNest =
   { name: [ "Deep" ]
-  , decls: [ M.NonRec Nothing "d" (Array.foldl (\acc i -> M.App acc [ M.Lit (LitInt i) ]) (local "base") (Array.range 1 1000)) ]
+  , decls: [ M.NonRec Nothing Nothing "d" (Array.foldl (\acc i -> M.App acc [ M.Lit (LitInt i) ]) (local "base") (Array.range 1 1000)) ]
   }
 
 -- | A single node carrying a very *wide* array (50k application arguments). `deepNest` exercises
@@ -91,7 +91,7 @@ deepNest =
 wideArgs :: M.Module
 wideArgs =
   { name: [ "Wide" ]
-  , decls: [ M.NonRec Nothing "w" (M.App (local "f") (Array.replicate 50000 (M.Lit (LitInt 0)))) ]
+  , decls: [ M.NonRec Nothing Nothing "w" (M.App (local "f") (Array.replicate 50000 (M.Lit (LitInt 0)))) ]
   }
 
 spec :: Spec Unit
@@ -104,7 +104,7 @@ spec = describe "PureScript.Backend.Wasm.MiddleEnd.Serialize" do
       roundTrips { name: [ "Empty" ], decls: [] } `shouldEqual` Right { name: [ "Empty" ], decls: [] }
 
     it "round-trips Number edge cases" do
-      let m vals = { name: [ "Nums" ], decls: map (\(Tuple n x) -> M.NonRec Nothing n (M.Lit (LitNumber x))) vals }
+      let m vals = { name: [ "Nums" ], decls: map (\(Tuple n x) -> M.NonRec Nothing Nothing n (M.Lit (LitNumber x))) vals }
       let nums = m [ Tuple "neg" (-3.25), Tuple "big" 1.0e308, Tuple "small" 1.0e-308, Tuple "whole" 7.0 ]
       roundTrips nums `shouldEqual` Right nums
 

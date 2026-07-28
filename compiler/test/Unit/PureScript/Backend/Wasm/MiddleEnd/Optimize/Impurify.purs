@@ -40,10 +40,10 @@ perform e = M.Perform e
 impurify :: M.Expr -> M.Expr
 impurify e =
   fromMaybe e do
-    m <- Array.head (impurifyProgram Map.empty [ { name: [ "T" ], decls: [ M.NonRec Nothing "t" e ] } ])
+    m <- Array.head (impurifyProgram Map.empty [ { name: [ "T" ], decls: [ M.NonRec Nothing Nothing "t" e ] } ])
     decl <- Array.head m.decls
     case decl of
-      M.NonRec _ _ e' -> Just e'
+      M.NonRec _ _ _ e' -> Just e'
       _ -> Nothing
 
 spec :: Spec Unit
@@ -66,7 +66,7 @@ spec = describe "PureScript.Backend.Wasm.MiddleEnd.Optimize.Impurify" do
     impurify (M.App bindE [ loc "m", M.Abs [ "x" ] (loc "k") ])
       `shouldEqual`
         M.Abs [ "$ev" ]
-          ( M.Let [ M.NonRec Nothing "x" (perform (loc "m")) ]
+          ( M.Let [ M.NonRec Nothing Nothing "x" (perform (loc "m")) ]
               (perform (loc "k"))
           )
 
@@ -110,7 +110,7 @@ performsOf name = go
     M.Var _ -> 0
     M.Constructor _ _ _ -> 0
   bindGo = case _ of
-    M.NonRec _ _ x -> go x
+    M.NonRec _ _ _ x -> go x
     M.Rec rs -> sum (map (go <<< _.expr) rs)
   altGo alt = case alt.result of
     Right e -> go e

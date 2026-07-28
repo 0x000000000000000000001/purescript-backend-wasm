@@ -140,3 +140,18 @@ mapFoldWasmArray iters = loop iters 0
   where
   base = waMap (\x -> x + 1) (Array.range 1 2000)
   loop k acc = if k == 0 then acc else loop (k - 1) (waFoldl (\a x -> a + x) acc base)
+
+-- 8. polyInt — a benchmark to defeat the heuristic solver `counts.boxed <= 1`.
+--    `ignorePoly` forces 2 boxed usages of `acc`. The heuristic solver will conservatively
+--    assign `Bx` to `acc` to avoid multiple boxings. But these usages are in a cold/dead branch!
+--    Without TAST, the hot path `acc + 1` will allocate a boxed Int on every iteration.
+--    With TAST, `acc` is known to be `Int` and is forced to `I32`, so the hot path has 0 allocations.
+polyBoxed :: forall a. a -> a -> Int
+polyBoxed _ _ = 0
+
+polyInt :: Int -> Int
+polyInt iters = loop iters 0
+  where
+  loop k acc = 
+    if k == 0 then acc + polyBoxed acc acc
+    else loop (k - 1) (acc + 1)

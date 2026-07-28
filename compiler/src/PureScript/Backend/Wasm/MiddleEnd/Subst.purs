@@ -70,7 +70,7 @@ substMany = go
     Right e -> Right (go subs e)
     Left gs -> Left (map (\g -> { guard: go subs g.guard, expression: go subs g.expression }) gs)
   goBind subs = case _ of
-    M.NonRec meta i e -> M.NonRec meta i (go subs e)
+    M.NonRec meta t i e -> M.NonRec meta t i (go subs e)
     M.Rec rs -> M.Rec (map (\r -> r { expr = go subs r.expr }) rs)
   dropNames names subs = foldl (flip Map.delete) subs names
 
@@ -85,5 +85,5 @@ mkApp head args
 
 boundNames :: M.Bind -> Array String
 boundNames = case _ of
-  M.NonRec _ i _ -> [ i ]
+  M.NonRec _ _ i _ -> [ i ]
   M.Rec rs -> map _.ident rs

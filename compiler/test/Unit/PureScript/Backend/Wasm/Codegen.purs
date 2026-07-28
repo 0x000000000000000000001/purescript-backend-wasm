@@ -10,6 +10,7 @@ module Test.Unit.PureScript.Backend.Wasm.Codegen (spec) where
 import Prelude
 
 import Data.Array as Array
+import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Effect.Class (liftEffect)
 import Foreign.Object as Object
@@ -23,7 +24,7 @@ prog funcs = { funcs, labels: [], exportSigs: Object.empty }
 
 -- | A nullary function with the given local-slot count and body.
 caf :: String -> Int -> AnfExpr -> IRFunc
-caf name localCount body = { name: FuncName name, params: [], result: Boxed, body, export: Nothing, localCount }
+caf name localCount body = { name: FuncName name, params: [], result: Boxed, body, export: Nothing, localCount, forcedReps: Map.empty }
 
 spec :: Spec Unit
 spec = describe "PureScript.Backend.Wasm.Codegen.buildModule (stack safety)" do
@@ -38,6 +39,9 @@ spec = describe "PureScript.Backend.Wasm.Codegen.buildModule (stack safety)" do
   it "emits a program with many functions without overflowing (whole-program loop)" do
     let
       n = 30000
-      fns = map (\i -> { name: FuncName ("f" <> show i), params: [ Boxed ], result: Boxed, body: Return (ALitInt 0), export: Nothing, localCount: 1 }) (Array.range 0 (n - 1))
+      fns = map (\i -> { name: FuncName ("f" <> show i), params: [ Boxed ], result: Boxed, body: Return (ALitInt 0), export: Nothing
+    , localCount: 1
+    , forcedReps: Map.empty
+    }) (Array.range 0 (n - 1))
     r <- liftEffect (buildModule (prog fns))
     Array.length r.foreignModules `shouldEqual` 0

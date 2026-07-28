@@ -1,6 +1,6 @@
 {
-  "wasmBytes": 9007,
-  "node": "v24.16.0",
+  "wasmBytes": 26703,
+  "node": "v24.8.0",
   "benchmarks": [
     {
       "name": "fib",
@@ -8,32 +8,32 @@
       "points": [
         {
           "size": 20,
-          "nsPerOp": 41613,
-          "ms": 0.0416,
+          "nsPerOp": 69966,
+          "ms": 0.07,
           "result": 6765
         },
         {
           "size": 22,
-          "nsPerOp": 109257,
-          "ms": 0.1093,
+          "nsPerOp": 165245,
+          "ms": 0.1652,
           "result": 17711
         },
         {
           "size": 24,
-          "nsPerOp": 284152,
-          "ms": 0.2842,
+          "nsPerOp": 433317,
+          "ms": 0.4333,
           "result": 46368
         },
         {
           "size": 26,
-          "nsPerOp": 755981,
-          "ms": 0.756,
+          "nsPerOp": 1140935,
+          "ms": 1.1409,
           "result": 121393
         },
         {
           "size": 28,
-          "nsPerOp": 1960972,
-          "ms": 1.961,
+          "nsPerOp": 2977429,
+          "ms": 2.9774,
           "result": 317811
         }
       ]
@@ -44,32 +44,32 @@
       "points": [
         {
           "size": 200000,
-          "nsPerOp": 147646,
-          "ms": 0.1476,
+          "nsPerOp": 286641,
+          "ms": 0.2866,
           "result": 1602155744
         },
         {
           "size": 400000,
-          "nsPerOp": 295036,
-          "ms": 0.295,
+          "nsPerOp": 589409,
+          "ms": 0.5894,
           "result": 1536522688
         },
         {
           "size": 600000,
-          "nsPerOp": 442795,
-          "ms": 0.4428,
+          "nsPerOp": 852243,
+          "ms": 0.8522,
           "result": 1084984992
         },
         {
           "size": 800000,
-          "nsPerOp": 592017,
-          "ms": 0.592,
+          "nsPerOp": 1161815,
+          "ms": 1.1618,
           "result": 1529426816
         },
         {
           "size": 1000000,
-          "nsPerOp": 737798,
-          "ms": 0.7378,
+          "nsPerOp": 1416424,
+          "ms": 1.4164,
           "result": -143234976
         }
       ]
@@ -80,32 +80,32 @@
       "points": [
         {
           "size": 500,
-          "nsPerOp": 103741,
-          "ms": 0.1037,
+          "nsPerOp": 53452,
+          "ms": 0.0535,
           "result": 1
         },
         {
           "size": 1000,
-          "nsPerOp": 235727,
-          "ms": 0.2357,
+          "nsPerOp": 123357,
+          "ms": 0.1234,
           "result": 1
         },
         {
           "size": 1500,
-          "nsPerOp": 390962,
-          "ms": 0.391,
+          "nsPerOp": 198996,
+          "ms": 0.199,
           "result": 1
         },
         {
           "size": 2000,
-          "nsPerOp": 552918,
-          "ms": 0.5529,
+          "nsPerOp": 291751,
+          "ms": 0.2918,
           "result": 1
         },
         {
           "size": 3000,
-          "nsPerOp": 947410,
-          "ms": 0.9474,
+          "nsPerOp": 510840,
+          "ms": 0.5108,
           "result": 1
         }
       ]
@@ -116,26 +116,26 @@
       "points": [
         {
           "size": 6,
-          "nsPerOp": 12921,
-          "ms": 0.0129,
+          "nsPerOp": 9719,
+          "ms": 0.0097,
           "result": 4
         },
         {
           "size": 7,
-          "nsPerOp": 56965,
-          "ms": 0.057,
+          "nsPerOp": 41211,
+          "ms": 0.0412,
           "result": 40
         },
         {
           "size": 8,
-          "nsPerOp": 275486,
-          "ms": 0.2755,
+          "nsPerOp": 196226,
+          "ms": 0.1962,
           "result": 92
         },
         {
           "size": 9,
-          "nsPerOp": 1478676,
-          "ms": 1.4787,
+          "nsPerOp": 1028652,
+          "ms": 1.0287,
           "result": 352
         }
       ]
@@ -146,38 +146,38 @@
       "points": [
         {
           "size": 12,
-          "nsPerOp": 46633,
-          "ms": 0.0466,
+          "nsPerOp": 43435,
+          "ms": 0.0434,
           "result": 8386560
         },
         {
           "size": 13,
-          "nsPerOp": 92665,
-          "ms": 0.0927,
+          "nsPerOp": 90358,
+          "ms": 0.0904,
           "result": 33550336
         },
         {
           "size": 14,
-          "nsPerOp": 185893,
-          "ms": 0.1859,
+          "nsPerOp": 174689,
+          "ms": 0.1747,
           "result": 134209536
         },
         {
           "size": 15,
-          "nsPerOp": 370720,
-          "ms": 0.3707,
+          "nsPerOp": 353878,
+          "ms": 0.3539,
           "result": 536854528
         },
         {
           "size": 16,
-          "nsPerOp": 757066,
-          "ms": 0.7571,
+          "nsPerOp": 741953,
+          "ms": 0.742,
           "result": 2147450880
         },
         {
           "size": 17,
-          "nsPerOp": 1650225,
-          "ms": 1.6502,
+          "nsPerOp": 1570454,
+          "ms": 1.5705,
           "result": -65536
         }
       ]
@@ -188,32 +188,32 @@
       "points": [
         {
           "size": 8,
-          "nsPerOp": 249143,
-          "ms": 0.2491,
+          "nsPerOp": 128503,
+          "ms": 0.1285,
           "result": 32640
         },
         {
           "size": 9,
-          "nsPerOp": 1059953,
-          "ms": 1.06,
+          "nsPerOp": 552241,
+          "ms": 0.5522,
           "result": 130816
         },
         {
           "size": 10,
-          "nsPerOp": 4308454,
-          "ms": 4.3085,
+          "nsPerOp": 2126967,
+          "ms": 2.127,
           "result": 523776
         },
         {
           "size": 11,
-          "nsPerOp": 16299819,
-          "ms": 16.2998,
+          "nsPerOp": 8344783,
+          "ms": 8.3448,
           "result": 2096128
         },
         {
           "size": 12,
-          "nsPerOp": 64311125,
-          "ms": 64.3111,
+          "nsPerOp": 32609375,
+          "ms": 32.6094,
           "result": 8386560
         }
       ]
@@ -224,32 +224,32 @@
       "points": [
         {
           "size": 100,
-          "nsPerOp": 516506,
-          "ms": 0.5165,
+          "nsPerOp": 428444,
+          "ms": 0.4284,
           "result": 200300000
         },
         {
           "size": 200,
-          "nsPerOp": 998821,
-          "ms": 0.9988,
+          "nsPerOp": 842801,
+          "ms": 0.8428,
           "result": 400600000
         },
         {
           "size": 300,
-          "nsPerOp": 1476243,
-          "ms": 1.4762,
+          "nsPerOp": 1268543,
+          "ms": 1.2685,
           "result": 600900000
         },
         {
           "size": 400,
-          "nsPerOp": 1977944,
-          "ms": 1.9779,
+          "nsPerOp": 1709885,
+          "ms": 1.7099,
           "result": 801200000
         },
         {
           "size": 500,
-          "nsPerOp": 2426191,
-          "ms": 2.4262,
+          "nsPerOp": 2121826,
+          "ms": 2.1218,
           "result": 1001500000
         }
       ]
@@ -260,32 +260,32 @@
       "points": [
         {
           "size": 100,
-          "nsPerOp": 308593,
-          "ms": 0.3086,
+          "nsPerOp": 332212,
+          "ms": 0.3322,
           "result": 200300000
         },
         {
           "size": 200,
-          "nsPerOp": 594108,
-          "ms": 0.5941,
+          "nsPerOp": 612511,
+          "ms": 0.6125,
           "result": 400600000
         },
         {
           "size": 300,
-          "nsPerOp": 882171,
-          "ms": 0.8822,
+          "nsPerOp": 908848,
+          "ms": 0.9088,
           "result": 600900000
         },
         {
           "size": 400,
-          "nsPerOp": 1171369,
-          "ms": 1.1714,
+          "nsPerOp": 1220177,
+          "ms": 1.2202,
           "result": 801200000
         },
         {
           "size": 500,
-          "nsPerOp": 1464254,
-          "ms": 1.4643,
+          "nsPerOp": 1525433,
+          "ms": 1.5254,
           "result": 1001500000
         }
       ]
@@ -296,44 +296,44 @@
       "points": [
         {
           "size": 1000,
-          "nsPerOp": 756,
-          "ms": 0.0008,
+          "nsPerOp": 974,
+          "ms": 0.001,
           "result": 1000
         },
         {
           "size": 2000,
-          "nsPerOp": 1496,
-          "ms": 0.0015,
+          "nsPerOp": 1977,
+          "ms": 0.002,
           "result": 2000
         },
         {
           "size": 4000,
-          "nsPerOp": 2971,
-          "ms": 0.003,
+          "nsPerOp": 3995,
+          "ms": 0.004,
           "result": 4000
         },
         {
           "size": 8000,
-          "nsPerOp": 5929,
-          "ms": 0.0059,
+          "nsPerOp": 7921,
+          "ms": 0.0079,
           "result": 8000
         },
         {
           "size": 16000,
-          "nsPerOp": 11823,
-          "ms": 0.0118,
+          "nsPerOp": 15390,
+          "ms": 0.0154,
           "result": 16000
         },
         {
           "size": 32000,
-          "nsPerOp": 23633,
-          "ms": 0.0236,
+          "nsPerOp": 30958,
+          "ms": 0.031,
           "result": 32000
         },
         {
           "size": 64000,
-          "nsPerOp": 47235,
-          "ms": 0.0472,
+          "nsPerOp": 62214,
+          "ms": 0.0622,
           "result": 64000
         }
       ]
@@ -344,33 +344,81 @@
       "points": [
         {
           "size": 50000,
-          "nsPerOp": 5087130,
-          "ms": 5.0871,
+          "nsPerOp": 2683647,
+          "ms": 2.6836,
           "result": 947122104
         },
         {
           "size": 100000,
-          "nsPerOp": 10001188,
-          "ms": 10.0012,
+          "nsPerOp": 5311484,
+          "ms": 5.3115,
           "result": 1871094128
         },
         {
           "size": 200000,
-          "nsPerOp": 20270896,
-          "ms": 20.2709,
+          "nsPerOp": 10680583,
+          "ms": 10.6806,
           "result": 736856800
         },
         {
           "size": 400000,
-          "nsPerOp": 40485250,
-          "ms": 40.4853,
+          "nsPerOp": 21193417,
+          "ms": 21.1934,
           "result": 510277056
         },
         {
           "size": 800000,
-          "nsPerOp": 80670625,
-          "ms": 80.6706,
+          "nsPerOp": 42536000,
+          "ms": 42.536,
           "result": -269423744
+        }
+      ]
+    },
+    {
+      "name": "polyInt",
+      "desc": "TAST unboxing vs heuristic boxing (cold path)",
+      "points": [
+        {
+          "size": 100000,
+          "nsPerOp": 48715,
+          "ms": 0.0487,
+          "result": 100000
+        },
+        {
+          "size": 200000,
+          "nsPerOp": 98257,
+          "ms": 0.0983,
+          "result": 200000
+        },
+        {
+          "size": 400000,
+          "nsPerOp": 195299,
+          "ms": 0.1953,
+          "result": 400000
+        },
+        {
+          "size": 800000,
+          "nsPerOp": 399488,
+          "ms": 0.3995,
+          "result": 800000
+        },
+        {
+          "size": 1600000,
+          "nsPerOp": 795727,
+          "ms": 0.7957,
+          "result": 1600000
+        },
+        {
+          "size": 3200000,
+          "nsPerOp": 1607342,
+          "ms": 1.6073,
+          "result": 3200000
+        },
+        {
+          "size": 6400000,
+          "nsPerOp": 3109595,
+          "ms": 3.1096,
+          "result": 6400000
         }
       ]
     }

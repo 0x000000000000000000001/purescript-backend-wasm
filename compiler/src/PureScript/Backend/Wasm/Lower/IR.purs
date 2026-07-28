@@ -6,6 +6,7 @@ module PureScript.Backend.Wasm.Lower.IR where
 import Prelude
 
 import Data.Argonaut.Core (Json)
+import Data.Map (Map)
 import Data.Argonaut.Core as J
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe)
@@ -241,6 +242,7 @@ type IRFunc =
   -- | those inside `Switch` branches). Codegen declares `localCount - |params|`
   -- | extra locals; lowering supplies it from its final fresh-slot counter.
   , localCount :: Int
+  , forcedReps :: Map Int Rep
   }
 
 -- | A whole compiled module: the top-level functions (including lifted code

@@ -9,7 +9,7 @@ module PureScript.CoreFn.FromJSON
 
 import Prelude
 
-import Data.Argonaut.Core (Json, isNull, toArray, toObject)
+import Data.Argonaut.Core (Json, isNull, toArray, toObject, toString)
 import Data.Argonaut.Decode (JsonDecodeError(..), decodeJson, (.:), (.:?))
 import Data.Either (Either(..), note)
 import Data.Maybe (Maybe(..))
@@ -17,7 +17,7 @@ import Data.String.CodeUnits (charAt)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Foreign.Object (Object)
-import PureScript.CoreFn (Ann, Bind(..), Binder(..), CaseAlternative, ConstructorType(..), Expr(..), Guard, Literal(..), Meta(..), Module, Qualified(..), RecBinding, SourcePos, SourceSpan)
+import PureScript.CoreFn (Ann, Bind(..), Binder(..), CaseAlternative, ConstructorType(..), Expr(..), ExprType(..), Guard, Literal(..), Meta(..), Module, Qualified(..), RecBinding, SourcePos, SourceSpan)
 
 -- | Decode a full CoreFn module.
 decodeModule :: Json -> Either JsonDecodeError Module
@@ -160,7 +160,19 @@ decodeAnn json = do
   span <- decodeSpan =<< o .: "sourceSpan"
   metaJson <- o .: "meta"
   meta <- if isNull metaJson then pure Nothing else Just <$> decodeMeta metaJson
-  pure { span, meta }
+  typeOpt <- (o .:? "type") >>= traverse decodeExprType
+  pure { span, meta, type: typeOpt }
+
+decodeExprType :: Json -> Either JsonDecodeError ExprType
+decodeExprType json = do
+  case toString json of
+    Just s -> pure case s of
+      "Int" -> TypeInt
+      "Number" -> TypeNumber
+      "Boolean" -> TypeBoolean
+      "Char" -> TypeChar
+      _ -> TypeOther
+    Nothing -> pure TypeOther
 
 decodeMeta :: Json -> Either JsonDecodeError Meta
 decodeMeta json = do

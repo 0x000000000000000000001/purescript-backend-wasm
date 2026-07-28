@@ -37,7 +37,7 @@ spec = describe "PureScript.Backend.Wasm.MiddleEnd.Optimize.Specialize" do
         Array.any (contains (Pattern "recf$spec")) names `shouldEqual` true
         -- `use` no longer applies `recf` to a lambda — it calls the specialization
         case Array.find (declIs "use") m.decls of
-          Just (M.NonRec _ _ (M.Abs _ body)) -> hasSpecCall body `shouldEqual` true
+          Just (M.NonRec _ _ _ (M.Abs _ body)) -> hasSpecCall body `shouldEqual` true
           _ -> fail "expected use to remain a function"
 
   -- ADR 0027: the `where`-worker idiom defeats the pre-inline specialization pass.
@@ -61,12 +61,12 @@ spec = describe "PureScript.Backend.Wasm.MiddleEnd.Optimize.Specialize" do
 
 declNames :: M.Bind -> Array String
 declNames = case _ of
-  M.NonRec _ i _ -> [ i ]
+  M.NonRec _ _ i _ -> [ i ]
   M.Rec rs -> map _.ident rs
 
 declIs :: String -> M.Bind -> Boolean
 declIs name = case _ of
-  M.NonRec _ i _ -> i == name
+  M.NonRec _ _ i _ -> i == name
   _ -> false
 
 -- the body applies some `…$spec…` function
@@ -87,5 +87,5 @@ hasSpecCall = go
     Right e -> go e
     Left gs -> Array.any (\g -> go g.guard || go g.expression) gs
   bindGo = case _ of
-    M.NonRec _ _ e -> go e
+    M.NonRec _ _ _ e -> go e
     M.Rec rs -> Array.any (go <<< _.expr) rs

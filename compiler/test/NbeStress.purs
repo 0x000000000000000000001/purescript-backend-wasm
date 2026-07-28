@@ -75,12 +75,12 @@ flatBig n = M.Lit (LitArray (Array.replicate n (M.Lit (LitInt 0))))
 
 -- a one-declaration module `U.user = <body>`, the unit `simplifyModule` reduces.
 userModule :: M.Expr -> M.Module
-userModule body = { name: [ "U" ], decls: [ M.NonRec Nothing "user" body ] }
+userModule body = { name: [ "U" ], decls: [ M.NonRec Nothing Nothing "user" body ] }
 
 -- the reduced size of `U.user` after `simplifyModule`.
 userSize :: M.Module -> Int
 userSize m = case Array.head m.decls of
-  Just (M.NonRec _ _ e) -> exprSize e
+  Just (M.NonRec _ _ _ e) -> exprSize e
   _ -> -1
 
 spec :: Spec Unit

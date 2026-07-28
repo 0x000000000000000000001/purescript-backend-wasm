@@ -25,7 +25,7 @@ loc :: String -> M.Expr
 loc n = M.Var (Qualified Nothing n)
 
 bann :: Ann
-bann = { span: { start: origin, end: origin }, meta: Nothing }
+bann = { span: { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }, meta: Nothing, type: Nothing }
   where
   origin = { line: 0, column: 0 }
 
