@@ -15,9 +15,13 @@ import Prelude
 
 import Data.Array as Array
 import Data.Either (Either(..))
+import Data.Foldable (foldr)
+import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import PureScript.Backend.Wasm.MiddleEnd.IR as M
+import PureScript.Backend.Wasm.MiddleEnd.Subst (substMany)
 import PureScript.CoreFn as C
+import PureScript.CoreFn (ExprType(..), extractAnn, isIntArrayType)
 
 translModule :: C.Module -> M.Module
 translModule m = { name: m.name, decls: map translBind m.decls }
@@ -61,9 +65,17 @@ translExpr expr = case expr of
   C.Accessor _ label e -> M.Accessor label (translExpr e)
   C.ObjectUpdate _ e copyFields updates -> M.Update (translExpr e) copyFields (map (map translExpr) updates)
   -- collapse a curried lambda into one parameter list
-  C.Abs _ _ _ -> let peeled = peelAbs expr in M.Abs peeled.params (translExpr peeled.body)
+  C.Abs _ _ _ ->
+    let peeled = peelAbs expr
+        body = translExpr peeled.body
+        wrapCast { p, isI32Array } body' =
+          if isI32Array then
+            M.Let [ M.NonRec Nothing Nothing (p <> "$i32") (M.App (M.Var (C.Qualified (Just ["Wasm", "Array"]) "unsafeI32Cast")) [M.Var (C.Qualified Nothing p)]) ]
+              (substMany (Map.singleton p (M.Var (C.Qualified Nothing (p <> "$i32")))) body')
+          else body'
+    in M.Abs (map _.p peeled.params) (foldr wrapCast body peeled.params)
   -- collapse a curried application spine into one argument list
-  C.App _ _ _ -> let spine = collectApp expr in M.App (translExpr spine.head) (map translExpr spine.args)
+  C.App ann _ _ -> let spine = collectApp expr in M.App (rewriteAppHead ann.type (translExpr spine.head) spine.args) (map translExpr spine.args)
   C.Case _ scrutinees alternatives -> M.Case (map translExpr scrutinees) (map translAlt alternatives)
   C.Let _ binds body -> M.Let (map translBind binds) (translExpr body)
 
@@ -85,11 +97,18 @@ translAlt alt = { binders: alt.binders, result: translResult alt.result }
     Left guards -> Left (map (\g -> { guard: translExpr g.guard, expression: translExpr g.expression }) guards)
 
 -- | Peel a curried lambda into its parameter idents (outermost first) and body.
-peelAbs :: C.Expr -> { params :: Array C.Ident, body :: C.Expr }
+peelAbs :: C.Expr -> { params :: Array { p :: C.Ident, isI32Array :: Boolean }, body :: C.Expr }
 peelAbs = go []
   where
   go acc = case _ of
-    C.Abs _ p b -> go (Array.snoc acc p) b
+    C.Abs ann p b ->
+      let isI32 = case ann.type of
+            Just (C.TypeFunc args _) ->
+              case Array.head args of
+                Just a -> C.isIntArrayType a
+                Nothing -> false
+            _ -> false
+      in go (Array.snoc acc { p, isI32Array: isI32 }) b
     body -> { params: acc, body }
 
 -- | Flatten a curried application spine: `App (App f a) b` → `f` with `[a, b]`.
@@ -98,4 +117,38 @@ collectApp = go []
   where
   go acc = case _ of
     C.App _ f a -> go (Array.cons a acc) f
-    other -> { head: other, args: acc }
+    head -> { head, args: acc }
+
+rewriteAppHead :: Maybe C.ExprType -> M.Expr -> Array C.Expr -> M.Expr
+rewriteAppHead retType head args = case head of
+  M.Var (C.Qualified (Just ["Wasm", "Array"]) name) ->
+    let
+      isArrayI32 = case name of
+        "unsafeNew" -> case retType of
+          Just t -> isIntArrayType t
+          Nothing -> false
+        "unsafeIndex" -> case args of
+          [ arr, _ ] -> case (extractAnn arr).type of
+            Just t -> isIntArrayType t
+            _ -> false
+          _ -> false
+        "unsafeSet" -> case args of
+          [ arr, _, _ ] -> case (extractAnn arr).type of
+            Just t -> isIntArrayType t
+            _ -> false
+          _ -> false
+        "length" -> case args of
+          [ arr ] -> case (extractAnn arr).type of
+            Just t -> isIntArrayType t
+            _ -> false
+          _ -> false
+        _ -> false
+    in if isArrayI32 then
+         case name of
+           "unsafeNew" -> M.Var (C.Qualified (Just ["Wasm", "Array"]) "unsafeI32New")
+           "unsafeIndex" -> M.Var (C.Qualified (Just ["Wasm", "Array"]) "unsafeI32Index")
+           "unsafeSet" -> M.Var (C.Qualified (Just ["Wasm", "Array"]) "unsafeI32Set")
+           "length" -> M.Var (C.Qualified (Just ["Wasm", "Array"]) "unsafeI32Length")
+           _ -> head
+       else head
+  _ -> head

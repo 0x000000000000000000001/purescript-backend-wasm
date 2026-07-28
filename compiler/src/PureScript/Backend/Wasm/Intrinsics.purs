@@ -87,6 +87,12 @@ data Intrinsic
   -- | dependency, without needing an effect.
   | ArrayNew -- Int -> Array a
   | ArraySet -- Array a -> Int -> a -> Array a (writes, returns the array)
+  -- | TAST-guided specialized unboxed i32 arrays (`Array Int`)
+  | ArrayI32New
+  | ArrayI32Set
+  | ArrayI32Index
+  | ArrayI32Length
+  | ArrayI32Cast
   -- | `Data.Bounded`'s `top` / `bottom` for `Int` / `Char` / `Number`: nullary
   -- | constant values (the foreign is a bare value, not a function — arity 0).
   | TopInt -- maxBound Int (`i32.const 2147483647`)
@@ -283,6 +289,11 @@ qualifiedIntrinsic = case _ of
   "Wasm.Array.unsafeIndex" -> Just (Tuple ArrayIndex 2)
   "Wasm.Array.unsafeNew" -> Just (Tuple ArrayNew 1)
   "Wasm.Array.unsafeSet" -> Just (Tuple ArraySet 3)
+  "Wasm.Array.unsafeI32Length" -> Just (Tuple ArrayI32Length 1)
+  "Wasm.Array.unsafeI32Index" -> Just (Tuple ArrayI32Index 2)
+  "Wasm.Array.unsafeI32New" -> Just (Tuple ArrayI32New 1)
+  "Wasm.Array.unsafeI32Set" -> Just (Tuple ArrayI32Set 3)
+  "Wasm.Array.unsafeI32Cast" -> Just (Tuple ArrayI32Cast 1)
   -- `Wasm.String` (WasmBase, ADR 0030): first-order byte-level `$Str` primitives the
   -- `Data.String.*` code-point ops build on. `byteLength` reuses `StrLen`.
   "Wasm.String.byteLength" -> Just (Tuple StrLen 1)

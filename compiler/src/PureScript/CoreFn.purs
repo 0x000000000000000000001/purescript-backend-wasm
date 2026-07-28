@@ -67,6 +67,8 @@ data ExprType
   | TypeNumber
   | TypeBoolean
   | TypeChar
+  | TypeArray ExprType
+  | TypeFunc (Array ExprType) ExprType
   | TypeOther
 
 derive instance genericExprType :: Generic ExprType _
@@ -136,6 +138,27 @@ derive instance genericExpr :: Generic Expr _
 derive instance eqExpr :: Eq Expr
 instance showExpr :: Show Expr where
   show e = genericShow e
+
+extractAnn :: Expr -> Ann
+extractAnn = case _ of
+  Literal ann _ -> ann
+  Constructor ann _ _ _ -> ann
+  Accessor ann _ _ -> ann
+  ObjectUpdate ann _ _ _ -> ann
+  Abs ann _ _ -> ann
+  App ann _ _ -> ann
+  Var ann _ -> ann
+  Case ann _ _ -> ann
+  Let ann _ _ -> ann
+
+isIntType :: ExprType -> Boolean
+isIntType TypeInt = true
+isIntType TypeChar = true
+isIntType _ = false
+
+isIntArrayType :: ExprType -> Boolean
+isIntArrayType (TypeArray inner) = isIntType inner
+isIntArrayType _ = false
 
 -- | A binding group: a single non-recursive binding or a set of mutually
 -- | recursive ones.

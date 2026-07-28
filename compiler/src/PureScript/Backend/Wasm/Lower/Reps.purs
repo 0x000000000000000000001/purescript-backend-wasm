@@ -35,6 +35,8 @@ primRep = case _ of
   StrByteAt -> I32 -- a UTF-8 byte (0-255), as an Int
   CharCodeId -> I32 -- Char/Int share the i32 code-point rep; the conversion is the identity
   ArrayLength -> I32
+  ArrayI32Length -> I32
+  ArrayI32Index -> I32
   TopInt -> I32
   BottomInt -> I32
   TopChar -> I32
@@ -55,6 +57,9 @@ primRep = case _ of
   IntToNum -> F64
   TopNumber -> F64
   BottomNumber -> F64
+  ArrayI32New -> I32Array
+  ArrayI32Set -> I32Array
+  ArrayI32Cast -> I32Array
   _ -> Boxed
 
 -- | The representation each operand is generated at (by position); operands past
@@ -88,9 +93,14 @@ primOperandReps = case _ of
   NumEq -> [ F64, F64 ]
   -- Array a -> Int -> a: the array is `eqref`, the index `i32`
   ArrayIndex -> [ Boxed, I32 ]
+  ArrayI32Index -> [ I32Array, I32 ]
   -- Wasm.Array build primitives: lengths / indices are unboxed i32, arrays / values boxed
   ArrayNew -> [ I32 ]
+  ArrayI32New -> [ I32 ]
   ArraySet -> [ Boxed, I32, Boxed ]
+  ArrayI32Set -> [ I32Array, I32, I32 ]
+  ArrayI32Length -> [ I32Array ]
+  ArrayI32Cast -> [ Boxed ]
   -- Wasm.String byte primitives: the string is boxed ($Str eqref), indices / bytes are i32
   StrByteAt -> [ Boxed, I32 ]
   StrNew -> [ I32 ]

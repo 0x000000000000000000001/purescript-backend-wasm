@@ -147,6 +147,26 @@ genPrim ctx intr args = case intr, args of
     setE <- B.call ctx.mod arraySetHelperName [ arr, idx, val ] B.none
     arrAgain <- genAtomAs ctx Boxed a
     B.block ctx.mod [ setE, arrAgain ] B.eqref
+  ArrayI32Length, [ a ] -> do
+    arr <- genAtomAs ctx I32Array a
+    B.arrayLen ctx.mod arr
+  ArrayI32Index, [ a, i ] -> do
+    arr <- genAtomAs ctx I32Array a
+    idx <- intArg i
+    B.arrayGet ctx.mod arr idx B.i32 false
+  ArrayI32New, [ n ] -> do
+    len <- intArg n
+    zero <- B.i32Const ctx.mod 0
+    B.arrayNew ctx.mod ctx.rt.arrI32Ht len zero
+  ArrayI32Set, [ a, i, v ] -> do
+    arr <- genAtomAs ctx I32Array a
+    idx <- intArg i
+    val <- intArg v
+    setE <- B.arraySet ctx.mod arr idx val
+    arrAgain <- genAtomAs ctx I32Array a
+    B.block ctx.mod [ setE, arrAgain ] ctx.rt.refArrI32
+  ArrayI32Cast, [ a ] ->
+    genAtomAs ctx I32Array a
   -- Data.Bounded constants as raw values (boxed by the binding if needed).
   -- The Int min cannot be written as a literal (out of `Int` range), so build it.
   TopInt, [] -> B.i32Const ctx.mod 2147483647

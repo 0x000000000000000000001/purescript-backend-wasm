@@ -4,7 +4,7 @@ import Prelude
 
 import Data.Set (Set)
 import Foreign.Object (Object)
-import PureScript.Backend.Wasm.Lower.IR (Atom, ForeignImport)
+import PureScript.Backend.Wasm.Lower.IR (Atom, ForeignImport, FuncName)
 import PureScript.Backend.Wasm.Lower.Types (CtorInfo)
 
 -- | The local environment plus the module facts. `locals` maps a CoreFn
@@ -26,4 +26,12 @@ type Env =
   -- | foreign with no entry in `foreignSigs` (reconstruction failed; ADR 0016) is still
   -- | here, so it falls back to an all-opaque host import instead of failing the build.
   , foreignNames :: Set String
+  -- | Map of direct local functions (generated via Closure Splitting) for bypassing
+  -- | closures on direct self-recursive or local tail calls.
+  , directLocals :: Object DirectLocal
   }
+
+-- | Information about a direct local function that avoids the `$Code` signature
+-- | requirement of `call_ref`.
+type DirectLocal = { codeName :: FuncName, captures :: Array Atom, arity :: Int }
+

@@ -143,6 +143,7 @@ putRep w = case _ of
   F64 -> putU8 w 1
   Boxed -> putU8 w 2
   CloRef -> putU8 w 3
+  I32Array -> putU8 w 4
 
 getRep :: Reader -> Effect Rep
 getRep r = getU8 r >>= case _ of
@@ -150,6 +151,7 @@ getRep r = getU8 r >>= case _ of
   1 -> pure F64
   2 -> pure Boxed
   3 -> pure CloRef
+  4 -> pure I32Array
   n -> fail ("bad Rep tag: " <> show n)
 
 putCtorInfo :: Writer -> CtorInfo -> Effect Unit

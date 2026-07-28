@@ -18,7 +18,8 @@
 -- | `i32`: the recursive call's arithmetic arguments are demanded `i32`, so they
 -- | never box.
 module PureScript.Backend.Wasm.Lower.Unbox
-  ( assignProgramReps
+  ( TyRep(..)
+  , assignProgramReps
   ) where
 
 import Prelude
@@ -32,6 +33,7 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..))
+
 import PureScript.Backend.Wasm.Lower.IR (AnfExpr(..), Atom(..), Branch(..), FuncName, IRFunc, LitBranch(..), LitPat(..), RecBind(..), Rep(..), Rhs(..), Slot(..), VarRef(..), marshalRep)
 import PureScript.Backend.Wasm.Lower.Reps (primOperandReps, primRep)
 
@@ -39,31 +41,40 @@ import PureScript.Backend.Wasm.Lower.Reps (primOperandReps, primRep)
 
 -- | A type-inference lattice value: `Top` (no information yet), the unboxable scalar
 -- | types, or `Bx` (must be boxed — the bottom, where mixed/`eqref` values land).
-data TyRep = Top | Ti32 | Tf64 | Bx
+data TyRep = Top | Ti32 | Tf64 | TI32Array | Bx
 
 derive instance Eq TyRep
+
+instance Show TyRep where
+  show = case _ of
+    Top -> "Top"
+    Ti32 -> "Ti32"
+    Tf64 -> "Tf64"
+    TI32Array -> "TI32Array"
+    Bx -> "Bx"
 
 -- | Join two inferred types: equal types are kept, `Top` is the identity, anything
 -- | else (mixed scalars, or any `eqref`) is `Bx`.
 joinTy :: TyRep -> TyRep -> TyRep
-joinTy a b = case a, b of
-  Top, x -> x
-  x, Top -> x
-  Ti32, Ti32 -> Ti32
-  Tf64, Tf64 -> Tf64
-  _, _ -> Bx
+joinTy Top t = t
+joinTy t Top = t
+joinTy t1 t2
+  | t1 == t2 = t1
+  | otherwise = Bx
 
 -- | The wasm representation a final inferred type maps to (`Top`/`Bx` → `Boxed`).
 repOfTy :: TyRep -> Rep
 repOfTy = case _ of
   Ti32 -> I32
   Tf64 -> F64
+  TI32Array -> I32Array
   _ -> Boxed
 
 tyOfRep :: Rep -> TyRep
 tyOfRep = case _ of
   I32 -> Ti32
   F64 -> Tf64
+  I32Array -> TI32Array
   _ -> Bx
 
 -- signatures ------------------------------------------------------------------
@@ -78,8 +89,8 @@ type Sig = { params :: Array TyRep, result :: TyRep }
 -- | agree — so its signature cannot be unboxed by the whole-program join. Pinning here keeps
 -- | intra-module-only functions (notably self-recursive tail loops, the main unboxing win)
 -- | inferred as before. An empty set is the original whole-program behaviour.
-assignProgramReps :: Set FuncName -> Array IRFunc -> Array IRFunc
-assignProgramReps pinned funcs = map (rewriteFunc sigs) funcs
+assignProgramReps :: Map FuncName { params :: Array TyRep, result :: TyRep } -> Array IRFunc -> Array IRFunc
+assignProgramReps pinnedSigs funcs = map (rewriteFunc sigs) funcs
   where
   callSites = buildCallSites funcs
   funcByName = Map.fromFoldable (map (\fn -> Tuple fn.name fn) funcs)
@@ -93,11 +104,11 @@ assignProgramReps pinned funcs = map (rewriteFunc sigs) funcs
     in
       if s' == s then s else solve s'
 
-  -- a module-boundary-visible function is fixed to the boxed ABI (all params + result
-  -- `Bx`); callers then box arguments and read a boxed result through the existing rules
-  deriveSig s fn
-    | Set.member fn.name pinned = { params: map (const Bx) fn.params, result: Bx }
-    | otherwise =
+  -- a module-boundary-visible function is fixed to its explicit ABI signature (or boxed `Bx` if none was given); 
+  -- callers then box arguments and read a boxed result through the existing rules
+  deriveSig s fn = case Map.lookup fn.name pinnedSigs of
+    Just sig -> sig
+    Nothing ->
         { params: Array.mapWithIndex (paramTy s fn) fn.params
         , result: resultTy s fn
         }
@@ -230,7 +241,6 @@ rewriteFunc sigs fn = fn
   , body = rewrite fn.body
   }
   where
-  sig :: Sig
   sig = fromMaybe { params: [], result: Bx } (Map.lookup fn.name sigs)
   isCodeFunc = Array.head fn.params == Just CloRef
   -- an exported function crosses the host boundary through a marshalling wrapper
@@ -268,10 +278,10 @@ rewriteFunc sigs fn = fn
 
 -- local slot rule -------------------------------------------------------------
 
-type Counts = { i32 :: Int, f64 :: Int, boxed :: Int, inLoop :: Boolean }
+type Counts = { i32 :: Int, f64 :: Int, i32Array :: Int, boxed :: Int, inLoop :: Boolean }
 
 emptyCounts :: Counts
-emptyCounts = { i32: 0, f64: 0, boxed: 0, inLoop: false }
+emptyCounts = { i32: 0, f64: 0, i32Array: 0, boxed: 0, inLoop: false }
 
 -- | Keep a local slot unboxed when its rhs produces it unboxed and at most one use
 -- | boxes it (so the choice never increases the number of boxing allocations).
@@ -279,6 +289,7 @@ chooseRep :: Rep -> Counts -> Rep
 chooseRep producer counts = case producer of
   I32 | counts.boxed <= 1 -> I32
   F64 | counts.boxed <= 1 -> F64
+  I32Array | counts.boxed <= 1 -> I32Array
   _ -> Boxed
 
 producerRep :: Map FuncName Sig -> Rhs -> Rep
@@ -358,10 +369,11 @@ demand rep atom acc = case atom of
   bump = case rep of
     I32 -> emptyCounts { i32 = 1 }
     F64 -> emptyCounts { f64 = 1 }
+    I32Array -> emptyCounts { i32Array = 1 }
     _ -> emptyCounts { boxed = 1 }
 
 mergeCounts :: Counts -> Counts -> Counts
-mergeCounts a b = { i32: a.i32 + b.i32, f64: a.f64 + b.f64, boxed: a.boxed + b.boxed, inLoop: a.inLoop || b.inLoop }
+mergeCounts a b = { i32: a.i32 + b.i32, f64: a.f64 + b.f64, i32Array: a.i32Array + b.i32Array, boxed: a.boxed + b.boxed, inLoop: a.inLoop || b.inLoop }
 
 litSwitchDemand :: Array LitBranch -> Rep
 litSwitchDemand branches = case Array.head branches of

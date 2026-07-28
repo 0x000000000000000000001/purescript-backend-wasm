@@ -17,6 +17,7 @@ import Data.String.CodeUnits (charAt)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Foreign.Object (Object)
+import Foreign.Object as Object
 import PureScript.CoreFn (Ann, Bind(..), Binder(..), CaseAlternative, ConstructorType(..), Expr(..), ExprType(..), Guard, Literal(..), Meta(..), Module, Qualified(..), RecBinding, SourcePos, SourceSpan)
 
 -- | Decode a full CoreFn module.
@@ -172,7 +173,21 @@ decodeExprType json = do
       "Boolean" -> TypeBoolean
       "Char" -> TypeChar
       _ -> TypeOther
-    Nothing -> pure TypeOther
+    Nothing -> case toObject json of
+      Just o -> case Object.lookup "Array" o of
+        Just arrJson -> do
+          inner <- decodeExprType arrJson
+          pure (TypeArray inner)
+        Nothing -> case Object.lookup "Func" o of
+          Just funcJson -> do
+            funcObj <- objectOf funcJson
+            argsJson <- funcObj .: "args"
+            args <- arrayOf decodeExprType argsJson
+            retJson <- funcObj .: "ret"
+            ret <- decodeExprType retJson
+            pure (TypeFunc args ret)
+          Nothing -> pure TypeOther
+      Nothing -> pure TypeOther
 
 decodeMeta :: Json -> Either JsonDecodeError Meta
 decodeMeta json = do

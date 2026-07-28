@@ -72,7 +72,7 @@ import PureScript.Backend.Wasm.Lower.Match (MatchOps, compileMatch)
 import PureScript.Backend.Wasm.Lower.Monad (Lower, LowerError(..), fresh, throw)
 import PureScript.Backend.Wasm.Lower.Monad (LowerError(..)) as ReExport
 import PureScript.Backend.Wasm.Lower.Types (CtorInfo, ModuleInfo, ctorSig, peelAbs, qualifiedFuncName, qualifiedKey, qualifiedKeyOf)
-import PureScript.Backend.Wasm.Lower.Unbox (assignProgramReps)
+import PureScript.Backend.Wasm.Lower.Unbox (TyRep(..), assignProgramReps)
 import PureScript.Backend.Wasm.MiddleEnd.FreeVars (freeVars)
 import PureScript.Backend.Wasm.MiddleEnd.Subst (substMany)
 import PureScript.Backend.Wasm.MiddleEnd.IR (Bind(..), Module)
@@ -348,6 +348,11 @@ lowerApp env { head, args } k = case head of
         in
           applyArity arity (RCallForeign (opaqueForeign q arity))
     | otherwise -> throw (UnsupportedExpr ("unknown callee: " <> qualifiedKeyOf q))
+  M.Var (Qualified Nothing ident)
+    | Just direct <- Object.lookup ident env.directLocals ->
+        applyArity direct.arity (RCallKnown direct.codeName <<< (direct.captures <> _))
+    | Just (Tuple intr arity) <- foreignIntrinsic ident ->
+        applyArity arity (RPrim intr)
   _ ->
     lowerArg env head \fAtom ->
       lowerArgs env args \atoms ->
@@ -378,6 +383,53 @@ applyChain f args k = case Array.uncons args of
 -- | Lift a single-parameter lambda to a top-level code function and return its name
 -- | plus the atoms to capture (the lambda's free locals, resolved in the current
 -- | scope).
+-- | Direct Local Functions (Closure Splitting): This generates a fully uncurried direct function
+-- | that takes its captures and all parameters as explicit unboxed arguments, bypassing `call_ref`.
+liftDirectUncurried :: Env -> String -> Array String -> M.Expr -> Lower { codeName :: FuncName, captures :: Array Atom, arity :: Int, frees :: Array String }
+liftDirectUncurried env ident params body = do
+  let allFrees = freeVars params body
+  let frees = Array.filter (_ /= ident) allFrees
+  captures <- traverse (resolveLocal env) frees
+  n <- gets _.nextCode
+  modify_ _ { nextCode = n + 1 }
+  let directName = funcName env.moduleName ("$code_direct" <> show n)
+  let directArity = Array.length frees + Array.length params
+
+  let
+    directLocalFrees = Array.mapWithIndex (\i f -> Tuple f (AVar (Local (Slot i)))) frees
+    directLocalParams = Array.mapWithIndex (\i p -> Tuple p (AVar (Local (Slot (Array.length frees + i))))) params
+    
+    directSelfCaptures = map (\i -> AVar (Local (Slot i))) (Array.range 0 (Array.length frees - 1))
+    
+    directCodeLocals = Object.fromFoldable (directLocalFrees <> directLocalParams)
+    
+    directEnv = env
+      { locals = directCodeLocals
+      , directLocals = Object.insert ident { codeName: directName, captures: directSelfCaptures, arity: Array.length params } env.directLocals
+      }
+      
+  savedSlot <- gets _.slot
+  savedReps <- gets _.forcedReps
+  modify_ _ { slot = directArity, forcedReps = Map.empty }
+  directAnfExpr <- lowerTail directEnv body
+  directCount <- gets _.slot
+  directReps <- gets _.forcedReps
+  modify_ _ { slot = savedSlot, forcedReps = savedReps }
+  
+  modify_ \s -> s
+    { lifted = Array.snoc s.lifted
+        { name: directName
+        , params: Array.replicate directArity Boxed
+        , result: Boxed
+        , body: directAnfExpr
+        , export: Nothing
+        , localCount: directCount
+        , forcedReps: directReps
+        }
+    }
+    
+  pure { codeName: directName, captures, arity: Array.length params, frees }
+
 -- |
 -- | `self` names a binding the lambda may recursively refer to (a `let rec`).
 -- | Rather than capturing it — which would need knot-tying, since the closure is not
@@ -456,15 +508,18 @@ lowerCoreLetK env binds body finish = case Array.uncons binds of
         AVar (Local (Slot s)), Just type_
           | isIntType type_ -> modify_ \st -> st { forcedReps = Map.insert s I32 st.forcedReps }
           | isNumberType type_ -> modify_ \st -> st { forcedReps = Map.insert s F64 st.forcedReps }
+          | isIntArrayType type_ -> modify_ \st -> st { forcedReps = Map.insert s I32Array st.forcedReps }
         _, _ -> pure unit
       lowerCoreLetK (env { locals = Object.insert ident atom env.locals }) tail body finish
   Just { head: Rec recBinds, tail } -> case recBinds of
     [ r ]
       | M.Abs params recBody <- recBindFunctionForm r.expr
       , Just { head: param, tail: rest } <- Array.uncons params -> do
-          { codeName, captures } <- liftLambda (Just r.ident) env param (reAbs rest recBody)
-          bindRhs (RMkClosure codeName captures) \fAtom ->
-            lowerCoreLetK (env { locals = Object.insert r.ident fAtom env.locals }) tail body finish
+          -- 1. Create the direct uncurried function!
+          { codeName: directName, captures: directCaptures, arity: directArity, frees } <- liftDirectUncurried env r.ident params recBody
+          
+          let newDirectLocals = Object.insert r.ident { codeName: directName, captures: directCaptures, arity: directArity } env.directLocals
+          lowerCoreLetK (env { directLocals = newDirectLocals }) tail body finish
     [ r ]
       -- A single recursive binding that is neither a syntactic lambda (closure path above)
       -- nor a known callable (eta path in `lowerRecBind`) is a recursive *value* — tie its
@@ -710,6 +765,7 @@ lowerTopFunc info moduleName isRoot (Tuple ident expr) = do
       , labelIds: info.labelIds
       , foreignSigs: info.foreignSigs
       , foreignNames: info.foreignNames
+      , directLocals: Object.empty
       }
   modify_ _ { slot = Array.length params, forcedReps = Map.empty }
   block <- lowerTail env body
@@ -781,7 +837,7 @@ lowerModules optimize fieldReps foreignSigs foreignNames roots modules = do
       pure (Tuple ident sig)
   -- representation analysis (ADR 0013): unbox `Int`/`Number` where it avoids boxing
   pure
-    { funcs: if optimize then assignProgramReps Set.empty allFuncs else allFuncs
+    { funcs: if optimize then assignProgramReps Map.empty allFuncs else allFuncs
     , labels: Object.toUnfoldable info.labelIds
     , exportSigs
     }
@@ -903,14 +959,28 @@ lowerOneModule info reachable crossModuleRefs roots m = do
     isRoot = Array.elem m.name roots
     toLower = Array.filter (\(Tuple ident _) -> Object.member (qualifiedKey m.name ident) reachable)
       (functionDecls info.dictCtors m)
+    declTypes = Map.fromFoldable $ Array.concatMap
+      ( case _ of
+          M.NonRec _ type_ ident _ -> maybe [] (\t -> [Tuple ident t]) type_
+          M.Rec binds -> Array.concatMap (\r -> maybe [] (\t -> [Tuple r.ident t]) r.type) binds
+      )
+      m.decls
   Tuple funcs st <- runStateT
     (traverse (lowerTopFunc info m.name isRoot) toLower)
     { slot: 0, lifted: [], nextCode: 0, forcedReps: Map.empty }
   let mFuncs = funcs <> st.lifted
   let
-    pins = Set.fromFoldable
+    pins = Map.fromFoldable
       ( Array.mapMaybe
-          (\fn -> let FuncName k = fn.name in if Set.member k crossModuleRefs then Just fn.name else Nothing)
+          (\fn -> let FuncName k = fn.name in
+            if Set.member k crossModuleRefs || isJust fn.export then
+              let ident = Str.drop (Str.length (joinWith "." m.name) + 1) k
+              in case Map.lookup ident declTypes of
+                   Just (C.TypeFunc args ret) -> Just (Tuple fn.name { params: map toTyRep args, result: toTyRep ret })
+                   Just t -> Just (Tuple fn.name { params: [], result: toTyRep t }) -- value export
+                   Nothing -> Just (Tuple fn.name { params: map (const Bx) fn.params, result: Bx })
+            else Nothing
+          )
           mFuncs
       )
   pure (assignProgramReps pins mFuncs)
@@ -1069,3 +1139,14 @@ isIntType _ = false
 isNumberType :: C.ExprType -> Boolean
 isNumberType C.TypeNumber = true
 isNumberType _ = false
+
+isIntArrayType :: C.ExprType -> Boolean
+isIntArrayType (C.TypeArray C.TypeInt) = true
+isIntArrayType _ = false
+
+toTyRep :: C.ExprType -> TyRep
+toTyRep t
+  | isIntType t = Ti32
+  | isNumberType t = Tf64
+  | isIntArrayType t = TI32Array
+  | otherwise = Bx

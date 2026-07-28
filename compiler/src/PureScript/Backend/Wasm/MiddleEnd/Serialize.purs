@@ -149,7 +149,9 @@ putExprType w = case _ of
   TypeNumber -> putU8 w 1
   TypeBoolean -> putU8 w 2
   TypeChar -> putU8 w 3
-  TypeOther -> putU8 w 4
+  TypeArray inner -> putU8 w 4 *> putExprType w inner
+  TypeFunc args ret -> putU8 w 5 *> putArray w putExprType args *> putExprType w ret
+  TypeOther -> putU8 w 6
 
 getExprType :: Reader -> Effect ExprType
 getExprType r = do
@@ -159,8 +161,10 @@ getExprType r = do
     1 -> pure TypeNumber
     2 -> pure TypeBoolean
     3 -> pure TypeChar
-    4 -> pure TypeOther
-    _ -> fail "exprType tag"
+    4 -> TypeArray <$> getExprType r
+    5 -> TypeFunc <$> getArray r getExprType <*> getExprType r
+    6 -> pure TypeOther
+    _ -> fail "ExprType tag"
 
 putAnn :: Writer -> { span :: { start :: { line :: Int, column :: Int }, end :: { line :: Int, column :: Int } }, meta :: Maybe Meta, type :: Maybe ExprType } -> Effect Unit
 putAnn w a = do

@@ -113,6 +113,8 @@ coerce ctx from to e
       Boxed, I32 -> unboxIntExpr ctx e
       F64, Boxed -> boxNum ctx e
       Boxed, F64 -> unboxNumExpr ctx e
+      I32Array, Boxed -> pure e
+      Boxed, I32Array -> B.refCast ctx.mod e ctx.rt.refArrI32
       _, _ -> pure e
 
 -- | Generate an `Atom` at its natural representation.

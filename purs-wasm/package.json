@@ -45,5 +45,8 @@
     "bundle": "node scripts/bundle.mjs",
     "prepack": "node scripts/prepack.mjs",
     "version": "echo 'export const version = \"v'$npm_package_version'\";' > ./src/PursWasm/CLI/Version.js && git add ."
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
   }
 }
