@@ -109,6 +109,57 @@ export const i32EqzImpl = (mod) => (value) => () =>
 export const i32NeImpl = (mod) => (left) => (right) => () =>
   mod.i32.ne(left, right);
 
+export const i64AddImpl = (mod) => (left) => (right) => () =>
+  mod.i64.add(left, right);
+
+export const i64SubImpl = (mod) => (left) => (right) => () =>
+  mod.i64.sub(left, right);
+
+export const i64AndImpl = (mod) => (left) => (right) => () =>
+  mod.i64.and(left, right);
+
+export const i64OrImpl = (mod) => (left) => (right) => () =>
+  mod.i64.or(left, right);
+
+export const i64XorImpl = (mod) => (left) => (right) => () =>
+  mod.i64.xor(left, right);
+
+export const i64ShlImpl = (mod) => (left) => (right) => () =>
+  mod.i64.shl(left, right);
+
+export const i64ShrUImpl = (mod) => (left) => (right) => () =>
+  mod.i64.shr_u(left, right);
+
+export const i64RotlImpl = (mod) => (left) => (right) => () =>
+  mod.i64.rotl(left, right);
+
+export const i64EqImpl = (mod) => (left) => (right) => () =>
+  mod.i64.eq(left, right);
+
+export const i64ConstImpl = (mod) => (low) => (high) => () =>
+  mod.i64.const(low, high);
+
+export const i64MulImpl = (mod) => (left) => (right) => () =>
+  mod.i64.mul(left, right);
+
+export const i64ShrSImpl = (mod) => (left) => (right) => () =>
+  mod.i64.shr_s(left, right);
+
+export const i64RotrImpl = (mod) => (left) => (right) => () =>
+  mod.i64.rotr(left, right);
+
+export const i64LtSImpl = (mod) => (left) => (right) => () =>
+  mod.i64.lt_s(left, right);
+
+export const i64ExtendI32UImpl = (mod) => (value) => () =>
+  mod.i64.extend_u(value);
+
+export const i64ExtendI32SImpl = (mod) => (value) => () =>
+  mod.i64.extend_s(value);
+
+export const i32WrapI64Impl = (mod) => (value) => () =>
+  mod.i32.wrap(value);
+
 export const ifImpl = (mod) => (cond) => (ifTrue) => (ifFalse) => () =>
   mod.if(cond, ifTrue, ifFalse);
 

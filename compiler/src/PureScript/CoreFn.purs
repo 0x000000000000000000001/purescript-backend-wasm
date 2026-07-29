@@ -64,6 +64,7 @@ instance showConstructorType :: Show ConstructorType where
 
 data ExprType
   = TypeInt
+  | TypeInt64
   | TypeNumber
   | TypeBoolean
   | TypeChar
@@ -159,6 +160,10 @@ isIntType _ = false
 isIntArrayType :: ExprType -> Boolean
 isIntArrayType (TypeArray inner) = isIntType inner
 isIntArrayType _ = false
+
+isInt64ArrayType :: ExprType -> Boolean
+isInt64ArrayType (TypeArray TypeInt64) = true
+isInt64ArrayType _ = false
 
 -- | A binding group: a single non-recursive binding or a set of mutually
 -- | recursive ones.

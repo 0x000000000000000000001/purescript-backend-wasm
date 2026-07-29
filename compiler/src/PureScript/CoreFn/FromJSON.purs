@@ -186,7 +186,14 @@ decodeExprType json = do
             retJson <- funcObj .: "ret"
             ret <- decodeExprType retJson
             pure (TypeFunc args ret)
-          Nothing -> pure TypeOther
+          Nothing -> case Object.lookup "ADT" o of
+            Just adtJson -> do
+              adtObj <- objectOf adtJson
+              pathArr <- adtObj .: "path"
+              if pathArr == ["Wasm", "Int64", "Int64"]
+                then pure TypeInt64
+                else pure TypeOther
+            Nothing -> pure TypeOther
       Nothing -> pure TypeOther
 
 decodeMeta :: Json -> Either JsonDecodeError Meta

@@ -93,6 +93,12 @@ data Intrinsic
   | ArrayI32Index
   | ArrayI32Length
   | ArrayI32Cast
+  -- | TAST-guided specialized unboxed i64 arrays (`Array Int64`)
+  | ArrayI64New
+  | ArrayI64Set
+  | ArrayI64Index
+  | ArrayI64Length
+  | ArrayI64Cast
   -- | `Data.Bounded`'s `top` / `bottom` for `Int` / `Char` / `Number`: nullary
   -- | constant values (the foreign is a bare value, not a function — arity 0).
   | TopInt -- maxBound Int (`i32.const 2147483647`)
@@ -145,6 +151,25 @@ data Intrinsic
   -- | yielding the `Effect` thunk (the caller performs it).
   | MkEffectFn
   | RunEffectFn
+  -- | WasmBase Int64 intrinsics
+  | Int64Add
+  | Int64Sub
+  | Int64Mul
+  | Int64And
+  | Int64Or
+  | Int64Xor
+  | Int64Shl
+  | Int64Shr
+  | Int64Zshr
+  | Int64Rotl
+  | Int64Rotr
+  | Int64Eq
+  | Int64Lt
+  | Int64Complement
+  | Int64FromInt
+  | Int64FromHiLo
+  | Int64LowBits
+  | Int64HiBits
   -- | `Partial.Unsafe._unsafePartial :: (Unit -> a) -> a` — runs the partial thunk by
   -- | applying it to the unit (the erased `Partial` dictionary). Native so the wasm
   -- | closure never crosses to the JS foreign (which would call it as `f()`).
@@ -294,6 +319,15 @@ qualifiedIntrinsic = case _ of
   "Wasm.Array.unsafeI32New" -> Just (Tuple ArrayI32New 1)
   "Wasm.Array.unsafeI32Set" -> Just (Tuple ArrayI32Set 3)
   "Wasm.Array.unsafeI32Cast" -> Just (Tuple ArrayI32Cast 1)
+  "Wasm.I64Array.unsafeI64Length" -> Just (Tuple ArrayI64Length 1)
+  "Wasm.I64Array.unsafeI64Index" -> Just (Tuple ArrayI64Index 2)
+  "Wasm.I64Array.unsafeI64New" -> Just (Tuple ArrayI64New 1)
+  "Wasm.I64Array.unsafeI64Set" -> Just (Tuple ArrayI64Set 3)
+  "Wasm.I64Array.unsafeI64Cast" -> Just (Tuple ArrayI64Cast 1)
+  "Wasm.I64Array.length" -> Just (Tuple ArrayI64Length 1)
+  "Wasm.I64Array.unsafeIndex" -> Just (Tuple ArrayI64Index 2)
+  "Wasm.I64Array.unsafeNew" -> Just (Tuple ArrayI64New 1)
+  "Wasm.I64Array.unsafeSet" -> Just (Tuple ArrayI64Set 3)
   -- `Wasm.String` (WasmBase, ADR 0030): first-order byte-level `$Str` primitives the
   -- `Data.String.*` code-point ops build on. `byteLength` reuses `StrLen`.
   "Wasm.String.byteLength" -> Just (Tuple StrLen 1)
@@ -322,6 +356,22 @@ qualifiedIntrinsic = case _ of
   "Data.Int.Bits.shr" -> Just (Tuple IntShr 2)
   "Data.Int.Bits.zshr" -> Just (Tuple IntZshr 2)
   "Data.Int.Bits.complement" -> Just (Tuple IntComplement 1)
+  -- `Wasm.Int64` (WasmBase)
+  "Wasm.Int64.and" -> Just (Tuple Int64And 2)
+  "Wasm.Int64.or" -> Just (Tuple Int64Or 2)
+  "Wasm.Int64.xor" -> Just (Tuple Int64Xor 2)
+  "Wasm.Int64.shl" -> Just (Tuple Int64Shl 2)
+  "Wasm.Int64.shr" -> Just (Tuple Int64Shr 2)
+  "Wasm.Int64.zshr" -> Just (Tuple Int64Zshr 2)
+  "Wasm.Int64.rotl" -> Just (Tuple Int64Rotl 2)
+  "Wasm.Int64.rotr" -> Just (Tuple Int64Rotr 2)
+  "Wasm.Int64.eq" -> Just (Tuple Int64Eq 2)
+  "Wasm.Int64.lt" -> Just (Tuple Int64Lt 2)
+  "Wasm.Int64.complement" -> Just (Tuple Int64Complement 1)
+  "Wasm.Int64.fromInt" -> Just (Tuple Int64FromInt 1)
+  "Wasm.Int64.fromHiLo" -> Just (Tuple Int64FromHiLo 2)
+  "Wasm.Int64.lowBits" -> Just (Tuple Int64LowBits 1)
+  "Wasm.Int64.hiBits" -> Just (Tuple Int64HiBits 1)
   -- `reverse`/`sliceImpl`/`indexImpl`/`unconsImpl`, `Data.Foldable.fold{l,r}Array`,
   -- `Data.String.CodeUnits.{singleton,toCharArray,fromCharArray}`, `Data.Int.fromStringAsImpl`
   -- now live in `ulib/<Module>/foreign.wat` (ADR 0012), resolved as merged foreigns.

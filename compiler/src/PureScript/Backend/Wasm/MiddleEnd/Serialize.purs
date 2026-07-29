@@ -152,6 +152,7 @@ putExprType w = case _ of
   TypeArray inner -> putU8 w 4 *> putExprType w inner
   TypeFunc args ret -> putU8 w 5 *> putArray w putExprType args *> putExprType w ret
   TypeOther -> putU8 w 6
+  TypeInt64 -> putU8 w 7
 
 getExprType :: Reader -> Effect ExprType
 getExprType r = do
@@ -164,6 +165,7 @@ getExprType r = do
     4 -> TypeArray <$> getExprType r
     5 -> TypeFunc <$> getArray r getExprType <*> getExprType r
     6 -> pure TypeOther
+    7 -> pure TypeInt64
     _ -> fail "ExprType tag"
 
 putAnn :: Writer -> { span :: { start :: { line :: Int, column :: Int }, end :: { line :: Int, column :: Int } }, meta :: Maybe Meta, type :: Maybe ExprType } -> Effect Unit

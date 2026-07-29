@@ -37,6 +37,21 @@ primRep = case _ of
   ArrayLength -> I32
   ArrayI32Length -> I32
   ArrayI32Index -> I32
+  ArrayI64Index -> I64
+  Int64Add -> I64
+  Int64Sub -> I64
+  Int64Mul -> I64
+  Int64And -> I64
+  Int64Or -> I64
+  Int64Xor -> I64
+  Int64Shl -> I64
+  Int64Shr -> I64
+  Int64Zshr -> I64
+  Int64Rotl -> I64
+  Int64Rotr -> I64
+  Int64Complement -> I64
+  Int64FromInt -> I64
+  Int64FromHiLo -> I64
   TopInt -> I32
   BottomInt -> I32
   TopChar -> I32
@@ -60,6 +75,25 @@ primRep = case _ of
   ArrayI32New -> I32Array
   ArrayI32Set -> I32Array
   ArrayI32Cast -> I32Array
+  ArrayI64New -> I64Array
+  ArrayI64Set -> I64Array
+  ArrayI64Cast -> I64Array
+  Int64Add -> I64
+  Int64Sub -> I64
+  Int64Mul -> I64
+  Int64And -> I64
+  Int64Or -> I64
+  Int64Xor -> I64
+  Int64Shl -> I64
+  Int64Shr -> I64
+  Int64Zshr -> I64
+  Int64Rotl -> I64
+  Int64Rotr -> I64
+  Int64Complement -> I64
+  Int64FromInt -> I64
+  Int64FromHiLo -> I64
+  Int64LowBits -> I32
+  Int64HiBits -> I32
   _ -> Boxed
 
 -- | The representation each operand is generated at (by position); operands past
@@ -101,6 +135,11 @@ primOperandReps = case _ of
   ArrayI32Set -> [ I32Array, I32, I32 ]
   ArrayI32Length -> [ I32Array ]
   ArrayI32Cast -> [ Boxed ]
+  ArrayI64New -> [ I32 ]
+  ArrayI64Set -> [ I64Array, I32, I64 ]
+  ArrayI64Length -> [ I64Array ]
+  ArrayI64Index -> [ I64Array, I32 ]
+  ArrayI64Cast -> [ Boxed ]
   -- Wasm.String byte primitives: the string is boxed ($Str eqref), indices / bytes are i32
   StrByteAt -> [ Boxed, I32 ]
   StrNew -> [ I32 ]
@@ -112,4 +151,22 @@ primOperandReps = case _ of
   OrdNumber -> [ Boxed, Boxed, Boxed, F64, F64 ]
   -- forE lo hi f (perform-unit): the bounds are unboxed i32, the body closure boxed
   ForE -> [ I32, I32, Boxed, Boxed ]
+  Int64Add -> [ I64, I64 ]
+  Int64Sub -> [ I64, I64 ]
+  Int64Mul -> [ I64, I64 ]
+  Int64And -> [ I64, I64 ]
+  Int64Or -> [ I64, I64 ]
+  Int64Xor -> [ I64, I64 ]
+  Int64Shl -> [ I64, I32 ]
+  Int64Shr -> [ I64, I32 ]
+  Int64Zshr -> [ I64, I32 ]
+  Int64Rotl -> [ I64, I32 ]
+  Int64Rotr -> [ I64, I32 ]
+  Int64Eq -> [ I64, I64 ]
+  Int64Lt -> [ I64, I64 ]
+  Int64Complement -> [ I64 ]
+  Int64FromInt -> [ I32 ]
+  Int64FromHiLo -> [ I32, I32 ]
+  Int64LowBits -> [ I64 ]
+  Int64HiBits -> [ I64 ]
   _ -> []

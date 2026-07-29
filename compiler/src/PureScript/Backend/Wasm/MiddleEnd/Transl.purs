@@ -21,7 +21,7 @@ import Data.Maybe (Maybe(..))
 import PureScript.Backend.Wasm.MiddleEnd.IR as M
 import PureScript.Backend.Wasm.MiddleEnd.Subst (substMany)
 import PureScript.CoreFn as C
-import PureScript.CoreFn (ExprType(..), extractAnn, isIntArrayType)
+import PureScript.CoreFn (ExprType(..), extractAnn, isIntArrayType, isInt64ArrayType)
 
 translModule :: C.Module -> M.Module
 translModule m = { name: m.name, decls: map translBind m.decls }
@@ -143,12 +143,39 @@ rewriteAppHead retType head args = case head of
             _ -> false
           _ -> false
         _ -> false
+      isArrayI64 = case name of
+        "unsafeNew" -> case retType of
+          Just t -> isInt64ArrayType t
+          Nothing -> false
+        "unsafeIndex" -> case args of
+          [ arr, _ ] -> case (extractAnn arr).type of
+            Just t -> isInt64ArrayType t
+            _ -> false
+          _ -> false
+        "unsafeSet" -> case args of
+          [ arr, _, _ ] -> case (extractAnn arr).type of
+            Just t -> isInt64ArrayType t
+            _ -> false
+          _ -> false
+        "length" -> case args of
+          [ arr ] -> case (extractAnn arr).type of
+            Just t -> isInt64ArrayType t
+            _ -> false
+          _ -> false
+        _ -> false
     in if isArrayI32 then
          case name of
            "unsafeNew" -> M.Var (C.Qualified (Just ["Wasm", "Array"]) "unsafeI32New")
            "unsafeIndex" -> M.Var (C.Qualified (Just ["Wasm", "Array"]) "unsafeI32Index")
            "unsafeSet" -> M.Var (C.Qualified (Just ["Wasm", "Array"]) "unsafeI32Set")
            "length" -> M.Var (C.Qualified (Just ["Wasm", "Array"]) "unsafeI32Length")
+           _ -> head
+       else if isArrayI64 then
+         case name of
+           "unsafeNew" -> M.Var (C.Qualified (Just ["Wasm", "I64Array"]) "unsafeI64New")
+           "unsafeIndex" -> M.Var (C.Qualified (Just ["Wasm", "I64Array"]) "unsafeI64Index")
+           "unsafeSet" -> M.Var (C.Qualified (Just ["Wasm", "I64Array"]) "unsafeI64Set")
+           "length" -> M.Var (C.Qualified (Just ["Wasm", "I64Array"]) "unsafeI64Length")
            _ -> head
        else head
   _ -> head

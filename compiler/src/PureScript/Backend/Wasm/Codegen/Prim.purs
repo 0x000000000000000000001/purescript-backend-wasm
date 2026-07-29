@@ -167,6 +167,26 @@ genPrim ctx intr args = case intr, args of
     B.block ctx.mod [ setE, arrAgain ] ctx.rt.refArrI32
   ArrayI32Cast, [ a ] ->
     genAtomAs ctx I32Array a
+  ArrayI64Length, [ a ] -> do
+    arr <- genAtomAs ctx I64Array a
+    B.arrayLen ctx.mod arr
+  ArrayI64Index, [ a, i ] -> do
+    arr <- genAtomAs ctx I64Array a
+    idx <- intArg i
+    B.arrayGet ctx.mod arr idx B.i64 false
+  ArrayI64New, [ n ] -> do
+    len <- intArg n
+    zero <- B.i64Const ctx.mod 0 0
+    B.arrayNew ctx.mod ctx.rt.arrI64Ht len zero
+  ArrayI64Set, [ a, i, v ] -> do
+    arr <- genAtomAs ctx I64Array a
+    idx <- intArg i
+    val <- genAtomAs ctx I64 v
+    setE <- B.arraySet ctx.mod arr idx val
+    arrAgain <- genAtomAs ctx I64Array a
+    B.block ctx.mod [ setE, arrAgain ] ctx.rt.refArrI64
+  ArrayI64Cast, [ a ] ->
+    genAtomAs ctx I64Array a
   -- Data.Bounded constants as raw values (boxed by the binding if needed).
   -- The Int min cannot be written as a literal (out of `Int` range), so build it.
   TopInt, [] -> B.i32Const ctx.mod 2147483647
@@ -289,6 +309,59 @@ genPrim ctx intr args = case intr, args of
     ea <- intArg a
     m1 <- B.i32Const ctx.mod (-1)
     B.i32Xor ctx.mod ea m1
+  Int64Add, [ a, b ] -> i64Binop B.i64Add a b
+  Int64Sub, [ a, b ] -> i64Binop B.i64Sub a b
+  Int64Mul, [ a, b ] -> i64Binop B.i64Mul a b
+  Int64And, [ a, b ] -> i64Binop B.i64And a b
+  Int64Or, [ a, b ] -> i64Binop B.i64Or a b
+  Int64Xor, [ a, b ] -> i64Binop B.i64Xor a b
+  Int64Shl, [ a, b ] -> do
+    ea <- genAtomAs ctx I64 a
+    eb <- intArg b >>= B.i64ExtendI32U ctx.mod
+    B.i64Shl ctx.mod ea eb
+  Int64Shr, [ a, b ] -> do
+    ea <- genAtomAs ctx I64 a
+    eb <- intArg b >>= B.i64ExtendI32U ctx.mod
+    B.i64ShrS ctx.mod ea eb
+  Int64Zshr, [ a, b ] -> do
+    ea <- genAtomAs ctx I64 a
+    eb <- intArg b >>= B.i64ExtendI32U ctx.mod
+    B.i64ShrU ctx.mod ea eb
+  Int64Rotl, [ a, b ] -> do
+    ea <- genAtomAs ctx I64 a
+    eb <- intArg b >>= B.i64ExtendI32U ctx.mod
+    B.i64Rotl ctx.mod ea eb
+  Int64Rotr, [ a, b ] -> do
+    ea <- genAtomAs ctx I64 a
+    eb <- intArg b >>= B.i64ExtendI32U ctx.mod
+    B.i64Rotr ctx.mod ea eb
+  Int64Eq, [ a, b ] -> do
+    ea <- genAtomAs ctx I64 a
+    eb <- genAtomAs ctx I64 b
+    B.i64Eq ctx.mod ea eb >>= B.i31New ctx.mod
+  Int64Lt, [ a, b ] -> do
+    ea <- genAtomAs ctx I64 a
+    eb <- genAtomAs ctx I64 b
+    B.i64LtS ctx.mod ea eb >>= B.i31New ctx.mod
+  Int64Complement, [ a ] -> do
+    ea <- genAtomAs ctx I64 a
+    m1 <- B.i64Const ctx.mod (-1) (-1)
+    B.i64Xor ctx.mod ea m1
+  Int64FromInt, [ a ] -> do
+    ea <- intArg a
+    B.i64ExtendI32S ctx.mod ea
+  Int64FromHiLo, [ hi, lo ] -> do
+    ehi <- intArg hi >>= B.i64ExtendI32U ctx.mod
+    elo <- intArg lo >>= B.i64ExtendI32U ctx.mod
+    ehi_shl <- B.i64Const ctx.mod 32 0 >>= B.i64Shl ctx.mod ehi
+    B.i64Or ctx.mod ehi_shl elo
+  Int64LowBits, [ a ] -> do
+    ea <- genAtomAs ctx I64 a
+    B.i32WrapI64 ctx.mod ea
+  Int64HiBits, [ a ] -> do
+    ea <- genAtomAs ctx I64 a
+    c32 <- B.i64Const ctx.mod 32 0
+    B.i64ShrU ctx.mod ea c32 >>= B.i32WrapI64 ctx.mod
   _, _ -> throwException (error "Codegen: intrinsic given an operand list of the wrong arity")
   where
   -- operand at the representation the op needs (no-op if already that rep)
@@ -318,6 +391,10 @@ genPrim ctx intr args = case intr, args of
   intBinop op a b = do
     ea <- intArg a
     eb <- intArg b
+    op ctx.mod ea eb
+  i64Binop op a b = do
+    ea <- genAtomAs ctx I64 a
+    eb <- genAtomAs ctx I64 b
     op ctx.mod ea eb
   intCall2 name a b = do
     ea <- intArg a

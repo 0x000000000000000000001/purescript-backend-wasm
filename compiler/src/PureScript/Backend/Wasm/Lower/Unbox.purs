@@ -41,7 +41,7 @@ import PureScript.Backend.Wasm.Lower.Reps (primOperandReps, primRep)
 
 -- | A type-inference lattice value: `Top` (no information yet), the unboxable scalar
 -- | types, or `Bx` (must be boxed — the bottom, where mixed/`eqref` values land).
-data TyRep = Top | Ti32 | Tf64 | TI32Array | Bx
+data TyRep = Top | Ti32 | Ti64 | Tf64 | TI32Array | TI64Array | Bx
 
 derive instance Eq TyRep
 
@@ -49,8 +49,10 @@ instance Show TyRep where
   show = case _ of
     Top -> "Top"
     Ti32 -> "Ti32"
+    Ti64 -> "Ti64"
     Tf64 -> "Tf64"
     TI32Array -> "TI32Array"
+    TI64Array -> "TI64Array"
     Bx -> "Bx"
 
 -- | Join two inferred types: equal types are kept, `Top` is the identity, anything
@@ -66,8 +68,10 @@ joinTy t1 t2
 repOfTy :: TyRep -> Rep
 repOfTy = case _ of
   Ti32 -> I32
+  Ti64 -> I64
   Tf64 -> F64
   TI32Array -> I32Array
+  TI64Array -> I64Array
   _ -> Boxed
 
 tyOfRep :: Rep -> TyRep
@@ -288,8 +292,10 @@ emptyCounts = { i32: 0, f64: 0, i32Array: 0, boxed: 0, inLoop: false }
 chooseRep :: Rep -> Counts -> Rep
 chooseRep producer counts = case producer of
   I32 | counts.boxed <= 1 -> I32
+  I64 -> I64 -- I64 cannot be boxed
   F64 | counts.boxed <= 1 -> F64
   I32Array | counts.boxed <= 1 -> I32Array
+  I64Array | counts.boxed <= 1 -> I64Array
   _ -> Boxed
 
 producerRep :: Map FuncName Sig -> Rhs -> Rep

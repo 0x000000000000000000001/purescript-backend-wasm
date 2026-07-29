@@ -7,6 +7,8 @@
 module PureScript.Backend.Wasm.Codegen.Value
   ( boxInt
   , unboxIntExpr
+  , boxInt64
+  , unboxInt64Expr
   , boxNum
   , unboxNumExpr
   , boxBool
@@ -64,6 +66,16 @@ unboxIntExpr ctx e = do
   c <- B.refCast ctx.mod e ctx.rt.refInt
   B.structGet ctx.mod 0 c B.i32 false
 
+-- | Box an `i64` expression into an `eqref` (`struct.new $Int64`).
+boxInt64 :: Ctx -> B.Expression -> Effect B.Expression
+boxInt64 ctx e = B.structNew ctx.mod ctx.rt.int64Ht [ e ]
+
+-- | Unbox an `eqref` expression to `i64` (`ref.cast $Int64` then `struct.get 0`).
+unboxInt64Expr :: Ctx -> B.Expression -> Effect B.Expression
+unboxInt64Expr ctx e = do
+  c <- B.refCast ctx.mod e ctx.rt.refInt64
+  B.structGet ctx.mod 0 c B.i64 false
+
 -- | Box an `f64` expression into an `eqref` (`struct.new $Num`).
 boxNum :: Ctx -> B.Expression -> Effect B.Expression
 boxNum ctx e = B.structNew ctx.mod ctx.rt.numHt [ e ]
@@ -111,10 +123,14 @@ coerce ctx from to e
   | otherwise = case from, to of
       I32, Boxed -> boxInt ctx e
       Boxed, I32 -> unboxIntExpr ctx e
+      I64, Boxed -> boxInt64 ctx e
+      Boxed, I64 -> unboxInt64Expr ctx e
       F64, Boxed -> boxNum ctx e
       Boxed, F64 -> unboxNumExpr ctx e
       I32Array, Boxed -> pure e
       Boxed, I32Array -> B.refCast ctx.mod e ctx.rt.refArrI32
+      I64Array, Boxed -> pure e
+      Boxed, I64Array -> B.refCast ctx.mod e ctx.rt.refArrI64
       _, _ -> pure e
 
 -- | Generate an `Atom` at its natural representation.

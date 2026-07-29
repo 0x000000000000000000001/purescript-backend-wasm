@@ -42,6 +42,23 @@ module Binaryen
   , i32And
   , i32Or
   , i32Xor
+  , i64Add
+  , i64Sub
+  , i64Mul
+  , i64And
+  , i64Or
+  , i64Xor
+  , i64Shl
+  , i64ShrS
+  , i64ShrU
+  , i64Rotl
+  , i64Rotr
+  , i64Eq
+  , i64LtS
+  , i64Const
+  , i64ExtendI32U
+  , i64ExtendI32S
+  , i32WrapI64
   , i32Shl
   , i32ShrS
   , i32ShrU
@@ -235,6 +252,74 @@ foreign import i32AddImpl :: Module -> Expression -> Expression -> Effect Expres
 
 i32Add :: Module -> Expression -> Expression -> Effect Expression
 i32Add = i32AddImpl
+
+foreign import i64AddImpl :: Module -> Expression -> Expression -> Effect Expression
+i64Add :: Module -> Expression -> Expression -> Effect Expression
+i64Add = i64AddImpl
+
+foreign import i64SubImpl :: Module -> Expression -> Expression -> Effect Expression
+i64Sub :: Module -> Expression -> Expression -> Effect Expression
+i64Sub = i64SubImpl
+
+foreign import i64AndImpl :: Module -> Expression -> Expression -> Effect Expression
+i64And :: Module -> Expression -> Expression -> Effect Expression
+i64And = i64AndImpl
+
+foreign import i64OrImpl :: Module -> Expression -> Expression -> Effect Expression
+i64Or :: Module -> Expression -> Expression -> Effect Expression
+i64Or = i64OrImpl
+
+foreign import i64XorImpl :: Module -> Expression -> Expression -> Effect Expression
+i64Xor :: Module -> Expression -> Expression -> Effect Expression
+i64Xor = i64XorImpl
+
+foreign import i64ShlImpl :: Module -> Expression -> Expression -> Effect Expression
+i64Shl :: Module -> Expression -> Expression -> Effect Expression
+i64Shl = i64ShlImpl
+
+foreign import i64ShrUImpl :: Module -> Expression -> Expression -> Effect Expression
+i64ShrU :: Module -> Expression -> Expression -> Effect Expression
+i64ShrU = i64ShrUImpl
+
+foreign import i64RotlImpl :: Module -> Expression -> Expression -> Effect Expression
+i64Rotl :: Module -> Expression -> Expression -> Effect Expression
+i64Rotl = i64RotlImpl
+
+foreign import i64EqImpl :: Module -> Expression -> Expression -> Effect Expression
+i64Eq :: Module -> Expression -> Expression -> Effect Expression
+i64Eq = i64EqImpl
+
+foreign import i64MulImpl :: Module -> Expression -> Expression -> Effect Expression
+i64Mul :: Module -> Expression -> Expression -> Effect Expression
+i64Mul = i64MulImpl
+
+foreign import i64ShrSImpl :: Module -> Expression -> Expression -> Effect Expression
+i64ShrS :: Module -> Expression -> Expression -> Effect Expression
+i64ShrS = i64ShrSImpl
+
+foreign import i64RotrImpl :: Module -> Expression -> Expression -> Effect Expression
+i64Rotr :: Module -> Expression -> Expression -> Effect Expression
+i64Rotr = i64RotrImpl
+
+foreign import i64LtSImpl :: Module -> Expression -> Expression -> Effect Expression
+i64LtS :: Module -> Expression -> Expression -> Effect Expression
+i64LtS = i64LtSImpl
+
+foreign import i64ExtendI32UImpl :: Module -> Expression -> Effect Expression
+i64ExtendI32U :: Module -> Expression -> Effect Expression
+i64ExtendI32U = i64ExtendI32UImpl
+
+foreign import i64ExtendI32SImpl :: Module -> Expression -> Effect Expression
+i64ExtendI32S :: Module -> Expression -> Effect Expression
+i64ExtendI32S = i64ExtendI32SImpl
+
+foreign import i32WrapI64Impl :: Module -> Expression -> Effect Expression
+i32WrapI64 :: Module -> Expression -> Effect Expression
+i32WrapI64 = i32WrapI64Impl
+
+foreign import i64ConstImpl :: Module -> Int -> Int -> Effect Expression
+i64Const :: Module -> Int -> Int -> Effect Expression
+i64Const = i64ConstImpl
 
 foreign import i32SubImpl :: Module -> Expression -> Expression -> Effect Expression
 

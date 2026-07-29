@@ -26,6 +26,8 @@ data Rep
   | Boxed -- the universal `eqref` box
   | CloRef -- (ref $Clo): the closure parameter of a lifted code function
   | I32Array -- (ref (array (mut i32))): TAST-guided array of Ints
+  | I64
+  | I64Array
 
 derive instance eqRep :: Eq Rep
 derive instance ordRep :: Ord Rep
