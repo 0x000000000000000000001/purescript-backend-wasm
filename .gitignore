@@ -1,5 +1,6 @@
 /.spago
-/output
+output
+output.bak
 /output-es
 /output-wasm
 /output-purwc
