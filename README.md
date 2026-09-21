@@ -11,10 +11,10 @@ No PR is currently planned.
 
 Latest measurement: **2026-09-21**, Apple M4 Pro, Node 24.8.0.
 
-| Workload | Speedup vs upstream | Isolated TAST benefit |
-| --- | ---: | ---: |
-| Fibonacci, upstream benchmark (`n = 28`) | **3.46×** | **3.43×** |
-| `polyInt`, local probe (`n = 6,400,000`) | **1.67×** | **1.68×** |
+| Workload | Speedup |
+| --- | --- |
+| Fibonacci, upstream benchmark (`n = 28`) | **3.46×** |
+| `polyInt`, local probe (`n = 6,400,000`) | **1.67×** |
 
 TAST types enable private recursive `i32` workers while preserving the public
 calling convention. A profitability guard now avoids the earlier curry
