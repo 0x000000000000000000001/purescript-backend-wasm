@@ -129,6 +129,9 @@ data Expr
   | Abs Ann Ident Expr
   -- | `App ann abstraction argument`
   | App Ann Expr Expr
+  -- | `TypeApp ann expression typeArgument`; this is emitted by the typed
+  -- | CoreFn/TAST fork for explicit polymorphic instantiation.
+  | TypeApp Ann Expr ExprType
   | Var Ann (Qualified Ident)
   -- | `Case ann scrutinees alternatives`
   | Case Ann (Array Expr) (Array CaseAlternative)
@@ -148,6 +151,7 @@ extractAnn = case _ of
   ObjectUpdate ann _ _ _ -> ann
   Abs ann _ _ -> ann
   App ann _ _ -> ann
+  TypeApp ann _ _ -> ann
   Var ann _ -> ann
   Case ann _ _ -> ann
   Let ann _ _ -> ann
