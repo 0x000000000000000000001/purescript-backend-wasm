@@ -38,20 +38,6 @@ primRep = case _ of
   ArrayI32Length -> I32
   ArrayI32Index -> I32
   ArrayI64Index -> I64
-  Int64Add -> I64
-  Int64Sub -> I64
-  Int64Mul -> I64
-  Int64And -> I64
-  Int64Or -> I64
-  Int64Xor -> I64
-  Int64Shl -> I64
-  Int64Shr -> I64
-  Int64Zshr -> I64
-  Int64Rotl -> I64
-  Int64Rotr -> I64
-  Int64Complement -> I64
-  Int64FromInt -> I64
-  Int64FromHiLo -> I64
   TopInt -> I32
   BottomInt -> I32
   TopChar -> I32

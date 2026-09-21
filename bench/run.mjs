@@ -1,11 +1,11 @@
 // Benchmark runner for the wasm backend. For each `Int -> Int` entry of the
-// self-contained `Bench.Main` wasm, it sweeps a range of input sizes and times
+// self-contained wasm bundles, it sweeps a range of input sizes and times
 // each, so the result is a time-vs-input curve per benchmark. Results are recorded
 // to JSON (and, in snapshot mode, one gnuplot data file per benchmark) so
 // optimization work can be measured against this baseline.
 //
 //   build:    npm run build
-//   baseline: npm run bench       -> snapshots/baseline.json
+//   baseline: npm run base        -> snapshots/baseline.json (explicit replacement)
 //   snapshot: npm run snapshot    -> snapshots/<datetime>/{results.json,*.dat,*.png}
 //
 // Each entry returns a checksum/result, recorded per point so a before/after
@@ -15,37 +15,39 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
+import { benches, bundles, checkResult } from "./suite.mjs";
+import { measure } from "./measure.mjs";
+
+if (process.argv[2] === "--compare") {
+  if (process.argv.length !== 5) throw new Error("Usage: node run.mjs --compare manifest.json output-dir");
+  const { compare } = await import("./compare.mjs");
+  await compare(process.argv[3], process.argv[4]);
+  process.exit(0);
+}
+if (process.argv.length > 3 || process.argv[2]?.startsWith("--")) throw new Error("Usage: node run.mjs [snapshot-dir] | --compare manifest.json output-dir");
 
 // The benchmark wasm bundles. `Bench.Main` is the shared algorithmic suite; the
 // Effect-monad (CountEffect) and curry-dispatch (BenchCurry) benchmarks are separate
 // entries (their own bundles) but baselined here too — their optimizations (Effect
 // collapse, curried-call cost) are fragile and must be caught by a regression check.
-const bundleUrls = {
-  main: new URL("./output-wasm/index.wasm", import.meta.url),
-  countEffect: new URL("./output-wasm-count-effect/index.wasm", import.meta.url),
-  curry: new URL("./output-wasm-curry/index.wasm", import.meta.url),
-};
-const bundleBytes = {};
-for (const [k, url] of Object.entries(bundleUrls)) {
-  try {
-    bundleBytes[k] = readFileSync(fileURLToPath(url));
-  } catch {
-    bundleBytes[k] = null;
-  }
-}
+const bundleBytes = Object.fromEntries(Object.entries(bundles).map(([key, b]) => {
+  const path = fileURLToPath(new URL(`./${b.directory}/index.wasm`, import.meta.url));
+  if (!existsSync(path)) throw new Error(`Missing required ${key} bundle: ${path}. Run npm run build.`);
+  return [key, readFileSync(path)];
+}));
 const bytes = bundleBytes.main;
 
-// A fresh instance (and so a fresh wasm-GC managed heap) per measurement, so the
-// benchmarks do not share memory. Otherwise a fast, allocation-light benchmark that
-// the adaptive timer runs very many times grows/loads the shared heap and skews a
-// later allocation-heavy one — which made the numbers unreliable (an isolated
-// benchmark measured very differently from the same one in the shared run).
+// Fresh module state per point. V8's GC heap is still shared within this process;
+// the comparison mode additionally repeats each arm in fresh processes.
 async function freshFn(b) {
   const { instance } = await WebAssembly.instantiate(bundleBytes[b.bundle ?? "main"], {});
-  return instance.exports[b.fn ?? b.name];
+  instance.exports.caf_init?.();
+  const fn = instance.exports[b.fn ?? b.name];
+  if (typeof fn !== "function") throw new Error(`Missing export ${b.fn ?? b.name}`);
+  return fn;
 }
 
-// The baseline (set by `npm run base`), if any: a `name -> size -> ms` lookup that
+// The baseline (set by `npm run base`), if any: a `name -> size -> point` lookup that
 // snapshots overlay and compare against.
 const baselinePath = fileURLToPath(new URL("./snapshots/baseline.json", import.meta.url));
 let baseline = null;
@@ -53,47 +55,11 @@ if (existsSync(baselinePath)) {
   try {
     baseline = {};
     for (const b of JSON.parse(readFileSync(baselinePath, "utf8")).benchmarks) {
-      baseline[b.name] = Object.fromEntries(b.points.map((p) => [p.size, p.ms]));
+      baseline[b.name] = Object.fromEntries(b.points.map((p) => [p.size, p]));
     }
-  } catch {
-    baseline = null;
+  } catch (error) {
+    throw new Error(`Invalid baseline ${baselinePath}: ${error.message}`);
   }
-}
-
-// name, the input sizes to sweep, and what it stresses.
-const benches = [
-  { name: "fib", sizes: [20, 22, 24, 26, 28], desc: "tree recursion + Int arithmetic" },
-  { name: "sumLoop", sizes: [200_000, 400_000, 600_000, 800_000, 1_000_000], desc: "tail loop; +/*/> via Prelude dicts" },
-  { name: "qsort", sizes: [500, 1000, 1500, 2000, 3000], desc: "list quicksort: closures, Ord, alloc" },
-  { name: "nqueens", sizes: [6, 7, 8, 9], desc: "backtracking; mutual recursion" },
-  { name: "bintreeDfs", sizes: [12, 13, 14, 15, 16, 17], desc: "DFS over a balanced tree" },
-  { name: "bintreeBfs", sizes: [8, 9, 10, 11, 12], desc: "BFS (list queue) over a tree" },
-  { name: "mapFold", sizes: [100, 200, 300, 400, 500], desc: "map/foldl over a list; closure args" },
-  { name: "mapFoldArray", sizes: [100, 200, 300, 400, 500], desc: "map/foldl over a Data.Array (ulib HOFs)" },
-  { name: "countEffect", bundle: "countEffect", fn: "countTo", sizes: [1000, 2000, 4000, 8000, 16000, 32000, 64000], desc: "Effect monad: cyclic instance dicts → constant-stack loop" },
-  { name: "curry", bundle: "curry", fn: "curryDispatch", sizes: [50_000, 100_000, 200_000, 400_000, 800_000], desc: "curried Int->Int->Int dispatch (closure-alloc)" },
-  { name: "polyInt", sizes: [100_000, 200_000, 400_000, 800_000, 1_600_000, 3_200_000, 6_400_000], desc: "TAST unboxing vs heuristic boxing (cold path)" },
-];
-
-// Adaptive timing: warm up, calibrate the repetition count so a timed batch runs
-// long enough to be stable, then take the min over several trials (ns per call).
-function nsPerOp(fn, arg) {
-  for (let i = 0; i < 10; i++) fn(arg); // warmup (let V8 JIT settle)
-  let reps = 1;
-  for (; ;) {
-    const t0 = process.hrtime.bigint();
-    for (let i = 0; i < reps; i++) fn(arg);
-    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
-    if (ms >= 30 || reps >= 5e8) break;
-    reps = Math.max(reps + 1, Math.ceil((reps * 40) / Math.max(ms, 0.01)));
-  }
-  let best = Infinity;
-  for (let t = 0; t < 5; t++) {
-    const t0 = process.hrtime.bigint();
-    for (let i = 0; i < reps; i++) fn(arg);
-    best = Math.min(best, Number(process.hrtime.bigint() - t0) / reps);
-  }
-  return best;
 }
 
 const fmt = (ns) =>
@@ -103,15 +69,13 @@ console.log(`wasm: ${bytes.length} bytes  (Bench.Main bundle)\n`);
 
 const results = [];
 for (const b of benches) {
-  if (!bundleBytes[b.bundle ?? "main"]) {
-    console.log(`${b.name.padEnd(11)} (skipped: ${b.bundle ?? "main"} bundle not built)`);
-    continue;
-  }
   const points = [];
   for (const size of b.sizes) {
     const fn = await freshFn(b);
     const result = fn(size);
-    const ns = nsPerOp(fn, size);
+    checkResult(b, size, result, baseline?.[b.name]?.[size]);
+    const ns = measure(fn, size).minNs;
+    checkResult(b, size, fn(size));
     points.push({ size, nsPerOp: Math.round(ns), ms: Number((ns / 1e6).toFixed(4)), result });
   }
   results.push({ name: b.name, desc: b.desc, points });
@@ -132,7 +96,7 @@ if (argDir) {
   // gnuplot skips), so the graph overlays the baseline curve and the current one.
   for (const b of results) {
     const base = baseline?.[b.name] ?? {};
-    const dat = b.points.map((p) => `${p.size} ${base[p.size] ?? "NaN"} ${p.ms}`).join("\n") + "\n";
+    const dat = b.points.map((p) => `${p.size} ${base[p.size]?.ms ?? "NaN"} ${p.ms}`).join("\n") + "\n";
     writeFileSync(`${dir}/${b.name}.dat`, "# input-size  baseline-ms  current-ms\n" + dat);
   }
   console.log(`\nwrote ${dir}/results.json + ${results.length} *.dat files`);
@@ -141,7 +105,7 @@ if (argDir) {
     console.log("\nvs baseline (largest input):");
     for (const b of results) {
       const last = b.points[b.points.length - 1];
-      const base = baseline[b.name]?.[last.size];
+      const base = baseline[b.name]?.[last.size]?.ms;
       if (base != null) {
         console.log(`  ${b.name.padEnd(11)} ${base.toFixed(1)}ms -> ${last.ms.toFixed(1)}ms  (${(base / last.ms).toFixed(2)}x)`);
       }

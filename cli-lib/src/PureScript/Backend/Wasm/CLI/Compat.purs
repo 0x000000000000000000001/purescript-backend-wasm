@@ -61,7 +61,7 @@ supportedCorefn = [ "0.15.16" ]
 -- | CoreFn-format axis is `supportedCorefn`; the per-binary CLI `Version` strings are deliberately
 -- | NOT used here — they can differ between binaries and would break key agreement.)
 backendCacheVersion :: String
-backendCacheVersion = "1"
+backendCacheVersion = "6"
 
 -- | The toolchain component of the `.pmi` content-address (ADR 0040 §2): the axes that affect a
 -- | module's interface + optimization summary — the `purs`/CoreFn pin and the backend output version.

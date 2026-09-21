@@ -72,6 +72,7 @@ import PureScript.Backend.Wasm.Lower.Match (MatchOps, compileMatch)
 import PureScript.Backend.Wasm.Lower.Monad (Lower, LowerError(..), fresh, throw)
 import PureScript.Backend.Wasm.Lower.Monad (LowerError(..)) as ReExport
 import PureScript.Backend.Wasm.Lower.Types (CtorInfo, ModuleInfo, ctorSig, peelAbs, qualifiedFuncName, qualifiedKey, qualifiedKeyOf)
+import PureScript.Backend.Wasm.Lower.TypedWorkers (splitIntWorkers)
 import PureScript.Backend.Wasm.Lower.Unbox (TyRep(..), assignProgramReps)
 import PureScript.Backend.Wasm.MiddleEnd.FreeVars (freeVars)
 import PureScript.Backend.Wasm.MiddleEnd.Subst (substMany)
@@ -348,11 +349,6 @@ lowerApp env { head, args } k = case head of
         in
           applyArity arity (RCallForeign (opaqueForeign q arity))
     | otherwise -> throw (UnsupportedExpr ("unknown callee: " <> qualifiedKeyOf q))
-  M.Var (Qualified Nothing ident)
-    | Just direct <- Object.lookup ident env.directLocals ->
-        applyArity direct.arity (RCallKnown direct.codeName <<< (direct.captures <> _))
-    | Just (Tuple intr arity) <- foreignIntrinsic ident ->
-        applyArity arity (RPrim intr)
   _ ->
     lowerArg env head \fAtom ->
       lowerArgs env args \atoms ->
@@ -383,52 +379,6 @@ applyChain f args k = case Array.uncons args of
 -- | Lift a single-parameter lambda to a top-level code function and return its name
 -- | plus the atoms to capture (the lambda's free locals, resolved in the current
 -- | scope).
--- | Direct Local Functions (Closure Splitting): This generates a fully uncurried direct function
--- | that takes its captures and all parameters as explicit unboxed arguments, bypassing `call_ref`.
-liftDirectUncurried :: Env -> String -> Array String -> M.Expr -> Lower { codeName :: FuncName, captures :: Array Atom, arity :: Int, frees :: Array String }
-liftDirectUncurried env ident params body = do
-  let allFrees = freeVars params body
-  let frees = Array.filter (_ /= ident) allFrees
-  captures <- traverse (resolveLocal env) frees
-  n <- gets _.nextCode
-  modify_ _ { nextCode = n + 1 }
-  let directName = funcName env.moduleName ("$code_direct" <> show n)
-  let directArity = Array.length frees + Array.length params
-
-  let
-    directLocalFrees = Array.mapWithIndex (\i f -> Tuple f (AVar (Local (Slot i)))) frees
-    directLocalParams = Array.mapWithIndex (\i p -> Tuple p (AVar (Local (Slot (Array.length frees + i))))) params
-    
-    directSelfCaptures = map (\i -> AVar (Local (Slot i))) (Array.range 0 (Array.length frees - 1))
-    
-    directCodeLocals = Object.fromFoldable (directLocalFrees <> directLocalParams)
-    
-    directEnv = env
-      { locals = directCodeLocals
-      , directLocals = Object.insert ident { codeName: directName, captures: directSelfCaptures, arity: Array.length params } env.directLocals
-      }
-      
-  savedSlot <- gets _.slot
-  savedReps <- gets _.forcedReps
-  modify_ _ { slot = directArity, forcedReps = Map.empty }
-  directAnfExpr <- lowerTail directEnv body
-  directCount <- gets _.slot
-  directReps <- gets _.forcedReps
-  modify_ _ { slot = savedSlot, forcedReps = savedReps }
-  
-  modify_ \s -> s
-    { lifted = Array.snoc s.lifted
-        { name: directName
-        , params: Array.replicate directArity Boxed
-        , result: Boxed
-        , body: directAnfExpr
-        , export: Nothing
-        , localCount: directCount
-        , forcedReps: directReps
-        }
-    }
-    
-  pure { codeName: directName, captures, arity: Array.length params, frees }
 
 -- |
 -- | `self` names a binding the lambda may recursively refer to (a `let rec`).
@@ -508,18 +458,15 @@ lowerCoreLetK env binds body finish = case Array.uncons binds of
         AVar (Local (Slot s)), Just type_
           | isIntType type_ -> modify_ \st -> st { forcedReps = Map.insert s I32 st.forcedReps }
           | isNumberType type_ -> modify_ \st -> st { forcedReps = Map.insert s F64 st.forcedReps }
-          | isIntArrayType type_ -> modify_ \st -> st { forcedReps = Map.insert s I32Array st.forcedReps }
         _, _ -> pure unit
       lowerCoreLetK (env { locals = Object.insert ident atom env.locals }) tail body finish
   Just { head: Rec recBinds, tail } -> case recBinds of
     [ r ]
       | M.Abs params recBody <- recBindFunctionForm r.expr
       , Just { head: param, tail: rest } <- Array.uncons params -> do
-          -- 1. Create the direct uncurried function!
-          { codeName: directName, captures: directCaptures, arity: directArity, frees } <- liftDirectUncurried env r.ident params recBody
-          
-          let newDirectLocals = Object.insert r.ident { codeName: directName, captures: directCaptures, arity: directArity } env.directLocals
-          lowerCoreLetK (env { directLocals = newDirectLocals }) tail body finish
+          { codeName, captures } <- liftLambda (Just r.ident) env param (reAbs rest recBody)
+          bindRhs (RMkClosure codeName captures) \fAtom ->
+            lowerCoreLetK (env { locals = Object.insert r.ident fAtom env.locals }) tail body finish
     [ r ]
       -- A single recursive binding that is neither a syntactic lambda (closure path above)
       -- nor a known callable (eta path in `lowerRecBind`) is a recursive *value* — tie its
@@ -750,9 +697,10 @@ funcName moduleName ident = FuncName (qualifiedKey moduleName ident)
 -- | Lower one top-level function definition to an `IRFunc` (eqref convention), given
 -- | its module and whether that module is a link root (only roots' names are
 -- | exported; everything else is internal and so DCE-eligible — ADR 0009).
-lowerTopFunc :: ModuleInfo -> Array String -> Boolean -> Tuple String M.Expr -> Lower IRFunc
-lowerTopFunc info moduleName isRoot (Tuple ident expr) = do
+lowerTopFunc :: ModuleInfo -> Array String -> Boolean -> Maybe C.ExprType -> Tuple String M.Expr -> Lower IRFunc
+lowerTopFunc info moduleName isRoot bindingType (Tuple ident expr) = do
   let { params, body } = peelAbs expr
+  let abiType = if isRoot then bindingType else Nothing
   let locals = Object.fromFoldable (Array.mapWithIndex (\i p -> Tuple p (AVar (Local (Slot i)))) params)
   let
     env =
@@ -765,7 +713,6 @@ lowerTopFunc info moduleName isRoot (Tuple ident expr) = do
       , labelIds: info.labelIds
       , foreignSigs: info.foreignSigs
       , foreignNames: info.foreignNames
-      , directLocals: Object.empty
       }
   modify_ _ { slot = Array.length params, forcedReps = Map.empty }
   block <- lowerTail env body
@@ -773,7 +720,7 @@ lowerTopFunc info moduleName isRoot (Tuple ident expr) = do
   codeReps <- gets _.forcedReps
   pure
     { name: funcName moduleName ident
-    , params: const Boxed <$> params
+    , params: directParamReps abiType (Array.length params)
     , result: Boxed
     , body: block
     , export: if isRoot then Just ident else Nothing
@@ -810,7 +757,13 @@ lowerModules optimize fieldReps foreignSigs foreignNames roots modules = do
         isRoot = Array.elem m.name roots
       in
         functionDecls dictCtors m <#> \(Tuple ident expr) ->
-          { key: qualifiedKey m.name ident, moduleName: m.name, ident, expr, isRoot }
+          { key: qualifiedKey m.name ident
+          , moduleName: m.name
+          , ident
+          , expr
+          , isRoot
+          , type: Map.lookup ident (moduleDeclTypes m)
+          }
     functions = Object.fromFoldable (entries <#> \e -> Tuple e.key e.expr)
     rootKeys = Array.mapMaybe (\e -> if e.isRoot then Just e.key else Nothing) entries
     reachable = reachableFunctions functions rootKeys
@@ -822,7 +775,7 @@ lowerModules optimize fieldReps foreignSigs foreignNames roots modules = do
     Just clash -> Left (LabelHashCollision clash)
     Nothing -> pure unit
   Tuple funcs st <- runStateT
-    (traverse (\e -> lowerTopFunc info e.moduleName e.isRoot (Tuple e.ident e.expr)) toLower)
+    (traverse (\e -> lowerTopFunc info e.moduleName e.isRoot e.type (Tuple e.ident e.expr)) toLower)
     { slot: 0, lifted: [], nextCode: 0, forcedReps: Map.empty }
   let allFuncs = funcs <> st.lifted
   -- the marshal signature of each exported function (looked up by its qualified name
@@ -959,31 +912,39 @@ lowerOneModule info reachable crossModuleRefs roots m = do
     isRoot = Array.elem m.name roots
     toLower = Array.filter (\(Tuple ident _) -> Object.member (qualifiedKey m.name ident) reachable)
       (functionDecls info.dictCtors m)
-    declTypes = Map.fromFoldable $ Array.concatMap
-      ( case _ of
-          M.NonRec _ type_ ident _ -> maybe [] (\t -> [Tuple ident t]) type_
-          M.Rec binds -> Array.concatMap (\r -> maybe [] (\t -> [Tuple r.ident t]) r.type) binds
-      )
-      m.decls
+    declTypes = moduleDeclTypes m
   Tuple funcs st <- runStateT
-    (traverse (lowerTopFunc info m.name isRoot) toLower)
+    (traverse (\(Tuple ident expr) -> lowerTopFunc info m.name isRoot (Map.lookup ident declTypes) (Tuple ident expr)) toLower)
     { slot: 0, lifted: [], nextCode: 0, forcedReps: Map.empty }
   let mFuncs = funcs <> st.lifted
   let
     pins = Map.fromFoldable
       ( Array.mapMaybe
-          (\fn -> let FuncName k = fn.name in
-            if Set.member k crossModuleRefs || isJust fn.export then
-              let ident = Str.drop (Str.length (joinWith "." m.name) + 1) k
-              in case Map.lookup ident declTypes of
-                   Just (C.TypeFunc args ret) -> Just (Tuple fn.name { params: map toTyRep args, result: toTyRep ret })
-                   Just t -> Just (Tuple fn.name { params: [], result: toTyRep t }) -- value export
-                   Nothing -> Just (Tuple fn.name { params: map (const Bx) fn.params, result: Bx })
-            else Nothing
+          ( \fn ->
+              let
+                FuncName k = fn.name
+              in
+                if Set.member k crossModuleRefs then
+                  Just (Tuple fn.name { params: map (const Bx) fn.params, result: Bx })
+                else if isRoot then
+                  let
+                    ident = Str.drop (Str.length (joinWith "." m.name) + 1) k
+                  in
+                    case Map.lookup ident declTypes of
+                      Just (C.TypeFunc args ret)
+                        | Array.length args == Array.length fn.params ->
+                            Just (Tuple fn.name { params: map toTyRep args, result: toTyRep ret })
+                      Just t | Array.null fn.params -> Just (Tuple fn.name { params: [], result: toTyRep t })
+                      _ -> Nothing
+                else Nothing
           )
           mFuncs
       )
-  pure (assignProgramReps pins mFuncs)
+  let
+    types = Map.fromFoldable
+      (map (\(Tuple ident ty) -> Tuple (funcName m.name ident) ty) (Map.toUnfoldable declTypes :: Array (Tuple String C.ExprType)))
+    split = splitIntWorkers types pins mFuncs
+  pure (assignProgramReps split.pins split.funcs)
 
 -- | A dependency's lowering interface (ADR 0038 Phase B M2b): the symbol tables a dependent merges
 -- | into its `ModuleInfo` to resolve cross-module callees — loaded from the dep's `.pmi`, never its
@@ -1130,7 +1091,6 @@ lowerModuleAgainstInfo shared isEntry target = do
   fragment <- lowerOneFragment info reachable crossModuleRefs hostRoots info.foreignSigs target
   pure { fragment, labels: Object.toUnfoldable tLabels, keyHomeModule: shared.keyHomeModule, crossModuleRefs }
 
-
 isIntType :: C.ExprType -> Boolean
 isIntType C.TypeInt = true
 isIntType C.TypeChar = true
@@ -1140,13 +1100,31 @@ isNumberType :: C.ExprType -> Boolean
 isNumberType C.TypeNumber = true
 isNumberType _ = false
 
-isIntArrayType :: C.ExprType -> Boolean
-isIntArrayType (C.TypeArray C.TypeInt) = true
-isIntArrayType _ = false
+moduleDeclTypes :: Module -> Map.Map String C.ExprType
+moduleDeclTypes m = Map.fromFoldable $ Array.concatMap
+  ( case _ of
+      M.NonRec _ type_ ident _ -> maybe [] (\t -> [ Tuple ident t ]) type_
+      M.Rec binds -> Array.concatMap (\r -> maybe [] (\t -> [ Tuple r.ident t ]) r.type) binds
+  )
+  m.decls
 
 toTyRep :: C.ExprType -> TyRep
 toTyRep t
   | isIntType t = Ti32
   | isNumberType t = Tf64
-  | isIntArrayType t = TI32Array
   | otherwise = Bx
+
+-- | Reps safe for direct functions. Unknown/polymorphic types stay boxed;
+-- | the TAST is only allowed to specialize representations that this lowering
+-- | and its call ABI already implement end-to-end.
+-- | A different source arity can omit dictionary/capture parameters. Do not
+-- | truncate the runtime signature or assign the source types to the wrong slots.
+directParamReps :: Maybe C.ExprType -> Int -> Array Rep
+directParamReps bindingType arity = case bindingType of
+  Just (C.TypeFunc args _) | Array.length args == arity -> map directRep args
+  _ -> Array.replicate arity Boxed
+  where
+  directRep t = case toTyRep t of
+    Ti32 -> I32
+    Tf64 -> F64
+    _ -> Boxed

@@ -59,6 +59,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Test benchmark protocol
+        run: pnpm -F ./bench run test
+
       # The bench scripts shell out to `purs-wasm/index.js`, which imports the compiled
       # CLI at `output/PursWasm.CLI.Main` (the `purs-wasm` package — `spago build -p purs-wasm`
       # also builds its `compiler` dependency) and merges `runtime/runtime.wasm` + the ulib

@@ -1,0 +1,3 @@
+module Wasm.Array where
+
+foreign import unsafeIndex :: forall a. Array a -> Int -> a

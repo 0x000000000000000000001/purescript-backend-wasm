@@ -30,8 +30,6 @@ import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
-import Data.Set (Set)
-import Data.Set as Set
 import Data.Tuple (Tuple(..))
 
 import PureScript.Backend.Wasm.Lower.IR (AnfExpr(..), Atom(..), Branch(..), FuncName, IRFunc, LitBranch(..), LitPat(..), RecBind(..), Rep(..), Rhs(..), Slot(..), VarRef(..), marshalRep)
@@ -85,14 +83,14 @@ tyOfRep = case _ of
 
 type Sig = { params :: Array TyRep, result :: TyRep }
 
--- | `pinned` names functions whose parameter/result ABI must stay **boxed** regardless
--- | of call-site evidence: those that are visible across a module boundary (ADR 0037 ③).
+-- | `pinnedSigs` supplies signatures fixed independently of call-site evidence.
+-- | Functions visible across a module boundary must remain boxed (ADR 0037 ③).
 -- | In a per-module build a function reached from another module is imported/exported with
 -- | a fixed boxed ABI — the defining module is compiled without seeing the foreign call
 -- | sites, and every caller (including intra-module ones, which share the one ABI) must
 -- | agree — so its signature cannot be unboxed by the whole-program join. Pinning here keeps
 -- | intra-module-only functions (notably self-recursive tail loops, the main unboxing win)
--- | inferred as before. An empty set is the original whole-program behaviour.
+-- | inferred as before. An empty map is the original whole-program behaviour.
 assignProgramReps :: Map FuncName { params :: Array TyRep, result :: TyRep } -> Array IRFunc -> Array IRFunc
 assignProgramReps pinnedSigs funcs = map (rewriteFunc sigs) funcs
   where
@@ -101,28 +99,27 @@ assignProgramReps pinnedSigs funcs = map (rewriteFunc sigs) funcs
   sigs = solve (Map.fromFoldable (map (\fn -> Tuple fn.name (initialSig fn)) funcs))
 
   -- | Iterate the signature inference to a fixed point (monotone on a finite
-  -- | lattice, so it terminates; a generous bound guards pathological cases).
+  -- | lattice, so it terminates).
   solve s =
     let
       s' = Map.fromFoldable (map (\fn -> Tuple fn.name (deriveSig s fn)) funcs)
     in
       if s' == s then s else solve s'
 
-  -- a module-boundary-visible function is fixed to its explicit ABI signature (or boxed `Bx` if none was given); 
-  -- callers then box arguments and read a boxed result through the existing rules
+  -- Boundary constraints take priority over hints and call-site inference.
   deriveSig s fn = case Map.lookup fn.name pinnedSigs of
     Just sig -> sig
     Nothing ->
-        { params: Array.mapWithIndex (paramTy s fn) fn.params
-        , result: resultTy s fn
-        }
+      { params: Array.mapWithIndex (paramTy s fn) fn.params
+      , result: resultTy s fn
+      }
 
   -- | A parameter's inferred type is the join of every argument passed to it across
   -- | the program; the closure parameter of a lifted code function stays `Bx`.
-  paramTy s fn i origRep = case origRep of
-    CloRef -> Bx
-    _ -> foldl (\acc (Tuple caller args) -> joinTy acc (atomTy s caller (Array.index args i))) Top
-      (fromMaybe [] (Map.lookup fn.name callSites))
+  paramTy s fn i origRep = foldl
+    (\acc (Tuple caller args) -> joinTy acc (atomTy s caller (Array.index args i)))
+    (paramSeed origRep)
+    (fromMaybe [] (Map.lookup fn.name callSites))
 
   resultTy s fn = returnsTy s fn fn.body
 
@@ -201,10 +198,17 @@ assignProgramReps pinnedSigs funcs = map (rewriteFunc sigs) funcs
       ALitNumber _ -> Tf64
       _ -> Bx
 
--- | A signature seeded from the function's existing (mostly `Boxed`) reps; the
--- | fixpoint refines it.
+-- | Lowering starts unknown parameters as `Boxed`. That is not an ABI constraint:
+-- | `Bx` would absorb all call-site evidence and disable ordinary scalar inference.
+-- | Required boxed ABIs are supplied separately through `pinnedSigs`.
+paramSeed :: Rep -> TyRep
+paramSeed Boxed = Top
+paramSeed rep = tyOfRep rep
+
+-- | Preserve known representation hints, but allow unknown parameters to be
+-- | refined by the same call-site analysis used for unannotated CoreFn.
 initialSig :: IRFunc -> Sig
-initialSig fn = { params: map (const Top) fn.params, result: Top }
+initialSig fn = { params: map paramSeed fn.params, result: Top }
 
 -- | Every call site, indexed by callee: the caller and the argument atoms.
 buildCallSites :: Array IRFunc -> Map FuncName (Array (Tuple FuncName (Array Atom)))
@@ -338,13 +342,17 @@ rhsDemands currentFn sigs acc = case _ of
   RPrim intr args -> foldlWithIndex (\i a at -> demand (operandRep intr i) at a) acc args
   RAtom at -> demand Boxed at acc
   RCallKnown name args ->
-    let 
+    let
       acc1 = foldlWithIndex (\i a at -> demand (calleeParamRep sigs name i) at a) acc args
-    in if name == currentFn 
-       then foldl (\a at -> case at of
-                      AVar (Local (Slot i)) -> Map.insertWith mergeCounts i (emptyCounts { boxed = 1, inLoop = true }) a
-                      _ -> a) acc1 args
-       else acc1
+    in
+      if name == currentFn then foldl
+        ( \a at -> case at of
+            AVar (Local (Slot i)) -> Map.insertWith mergeCounts i (emptyCounts { boxed = 1, inLoop = true }) a
+            _ -> a
+        )
+        acc1
+        args
+      else acc1
   RCallForeign sig args ->
     foldlWithIndex (\i a at -> demand (maybe Boxed marshalRep (Array.index sig.params i)) at a) acc args
   RMkData _ sig fields -> foldlWithIndex (\i a at -> demand (fromMaybe Boxed (Array.index sig i)) at a) acc fields

@@ -1,0 +1,9 @@
+module TastIntClient where
+
+import TastIntLib (add, applyTwice, loop)
+
+crossModule :: Int -> Int
+crossModule n = loop n 7
+
+crossPartial :: Int -> Int
+crossPartial n = applyTwice (add 5) n

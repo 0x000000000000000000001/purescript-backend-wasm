@@ -8,11 +8,10 @@ import Prelude
 
 import Data.Array as Array
 import Data.Map as Map
-import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Foreign.Object as Object
 import PureScript.Backend.Wasm.Codegen.Caf (CafPlan, cafPlan)
-import PureScript.Backend.Wasm.Lower.IR (AnfExpr(..), Atom(..), FuncName(..), IRFunc, Program, Rep(..), Rhs(..), Slot(..), VarRef(..))
+import PureScript.Backend.Wasm.Lower.IR (AnfExpr(..), Atom(..), FuncName(..), IRFunc, Program, Rep(..), Rhs(..), Slot(..))
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual)
 
@@ -23,10 +22,14 @@ prog funcs = { funcs, labels: [], exportSigs: Object.empty }
 -- An arity-0 CAF whose body references each named CAF in turn (`RCallKnown … []`).
 cafFn :: String -> Array String -> IRFunc
 cafFn name deps =
-  { name: FuncName name, params: [], result: Boxed, body: refs 0 deps, export: Nothing
-    , localCount: Array.length deps + 1
-    , forcedReps: Map.empty
-    }
+  { name: FuncName name
+  , params: []
+  , result: Boxed
+  , body: refs 0 deps
+  , export: Nothing
+  , localCount: Array.length deps + 1
+  , forcedReps: Map.empty
+  }
   where
   refs i ds = case Array.uncons ds of
     Nothing -> Return (ALitInt 0)

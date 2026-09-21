@@ -12,6 +12,8 @@ import Test.Unit.PureScript.Backend.Wasm.Codegen.Caf as Caf
 import Test.Unit.PureScript.Backend.Wasm.Externs as Externs
 import Test.Unit.PureScript.Backend.Wasm.Lower as Lower
 import Test.Unit.PureScript.Backend.Wasm.Lower.Match as Match
+import Test.Unit.PureScript.Backend.Wasm.Lower.TypedWorkers as TypedWorkers
+import Test.Unit.PureScript.Backend.Wasm.Lower.Unbox as Unbox
 import Test.Unit.PureScript.Backend.Wasm.MiddleEnd.Optimize.LambdaLift as LambdaLift
 import Test.Unit.PureScript.Backend.Wasm.MiddleEnd.FreeVars as FreeVars
 import Test.Unit.PureScript.Backend.Wasm.MiddleEnd.Cache as Cache
@@ -39,6 +41,8 @@ main = runSpecAndExitProcess [ consoleReporter ] do
   Codegen.spec
   NbeStress.spec
   Lower.spec
+  TypedWorkers.spec
+  Unbox.spec
   Match.spec
   Transl.spec
   LambdaLift.spec

@@ -4,7 +4,7 @@ import Prelude
 
 import Data.Either (Either(..), isLeft, isRight)
 import Data.String as Str
-import PureScript.Backend.Wasm.CLI.Compat (checkCorefnVersions, checkWasmBaseCompat)
+import PureScript.Backend.Wasm.CLI.Compat (checkCorefnVersions, checkWasmBaseCompat, codegenTag, toolchainTag)
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual)
 
@@ -18,6 +18,12 @@ cv name builtWith = { name, builtWith }
 
 spec :: Spec Unit
 spec = describe "PureScript.Backend.Wasm.CLI.Compat" do
+
+  describe "TAST cache invalidation" do
+    it "does not reuse pre-TAST summary or object keys" do
+      toolchainTag `shouldEqual` "corefn=0.15.16;backend=6"
+      codegenTag { platform: "node", optimize: true } `shouldEqual` "platform=node;opt=1;backend=6"
+      codegenTag { platform: "node", optimize: false } `shouldEqual` "platform=node;opt=0;backend=6"
 
   describe "checkWasmBaseCompat (ADR 0026)" do
     it "accepts Wasm.* foreigns that resolve to intrinsics" do

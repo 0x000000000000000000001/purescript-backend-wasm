@@ -2,6 +2,7 @@
   "name": "bench",
   "type": "module",
   "scripts": {
+    "test": "node --test test.mjs",
     "build:ps": "cd .. && spago build -p bench --output bench/output",
     "build:wasm:main": "cd .. && node ./purs-wasm/index.js build -I ./bench/output -O ./bench/output-wasm -e Bench.Main --force",
     "build:wasm:count-effect": "cd .. && node ./purs-wasm/index.js build -I ./bench/output -O ./bench/output-wasm-count-effect -e CountEffect --force",
@@ -11,6 +12,7 @@
     "build": "npm run build:ps && npm run build:wasm",
     "base": "npm run build:ps && npm run build:wasm:base && node run.mjs",
     "snapshot": "./snapshot.sh",
+    "proof:tast": "node tast-proof.mjs",
     "graph": "./graph.sh",
     "graph:count-state": "./count-state-graph.sh",
     "graph:curry": "./curry-graph.sh",

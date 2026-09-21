@@ -38,7 +38,7 @@ import Data.Tuple (Tuple(..))
 import PureScript.Backend.Wasm.MiddleEnd.FreeVars (freeVars)
 import PureScript.Backend.Wasm.MiddleEnd.IR as M
 import PureScript.Backend.Wasm.MiddleEnd.Subst (mkApp, substMany)
-import PureScript.CoreFn (Literal(..), ModuleName, Qualified(..))
+import PureScript.CoreFn (ExprType, Literal(..), ModuleName, Qualified(..))
 
 type Sub = Tuple String M.Expr
 
@@ -95,7 +95,7 @@ liftLet modName binds body = go [] [] binds
     Just { head, tail } -> case substBind subs head of
       M.Rec [ r ]
         | M.Abs params lambdaBody <- r.expr -> do
-            sub <- liftSelfRecFn modName r.ident params lambdaBody
+            sub <- liftSelfRecFn modName r.ident r.type params lambdaBody
             go kept (Array.snoc subs sub) tail
       -- a mutually-recursive group of functions (e.g. a `where` block's
       -- `go`/`tryCols`/`safe`) — lift the whole group, sharing its captured frees
@@ -112,8 +112,8 @@ liftLet modName binds body = go [] [] binds
 -- | top-level `ident$liftN = \frees… params… -> body'`, returning the substitution
 -- | `ident ↦ ident$liftN frees…` (the supercombinator partially applied to its
 -- | captured free variables) for the reference sites.
-liftSelfRecFn :: ModuleName -> String -> Array String -> M.Expr -> LiftM Sub
-liftSelfRecFn modName ident params body = do
+liftSelfRecFn :: ModuleName -> String -> Maybe ExprType -> Array String -> M.Expr -> LiftM Sub
+liftSelfRecFn modName ident bindingType params body = do
   let frees = Array.filter (_ /= ident) (freeVars params body)
   n <- gets _.counter
   modify_ \s -> s { counter = s.counter + 1 }
@@ -126,7 +126,12 @@ liftSelfRecFn modName ident params body = do
   -- (the captures resolve to the leading parameters there), then lift nested locals
   body' <- liftExpr modName (substMany (Map.singleton ident repl) body)
   let lambda' = M.Abs (frees <> params) body'
-  modify_ \s -> s { lifted = Array.snoc s.lifted (M.NonRec Nothing Nothing liftedIdent lambda') }
+  -- A capture-free lift has exactly the source function ABI, so preserving its
+  -- TAST type is sound and lets the backend specialize the lifted recursion.
+  -- Once captures are prepended, their types are not represented in this pass;
+  -- leave that transformed ABI opaque rather than guessing.
+  let liftedType = if Array.null frees then bindingType else Nothing
+  modify_ \s -> s { lifted = Array.snoc s.lifted (M.NonRec Nothing liftedType liftedIdent lambda') }
   pure (Tuple ident repl)
 
 type RecMember = { ident :: String, params :: Array String, body :: M.Expr }

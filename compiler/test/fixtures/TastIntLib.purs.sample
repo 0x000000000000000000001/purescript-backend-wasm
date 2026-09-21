@@ -1,0 +1,54 @@
+module TastIntLib where
+
+foreign import intAdd :: Int -> Int -> Int
+foreign import intSub :: Int -> Int -> Int
+foreign import intMul :: Int -> Int -> Int
+
+add :: Int -> Int -> Int
+add x y = intAdd x y
+
+loop :: Int -> Int -> Int
+loop n acc = case n of
+  0 -> acc
+  _ -> loop (intSub n 1) (intAdd acc 1)
+
+evenCount :: Int -> Int
+evenCount n = case n of
+  0 -> 0
+  _ -> intAdd 1 (oddCount (intSub n 1))
+
+oddCount :: Int -> Int
+oddCount n = case n of
+  0 -> 0
+  _ -> intAdd 1 (evenCount (intSub n 1))
+
+square :: Int -> Int
+square x = intMul x x
+
+joinValue :: Int -> Int
+joinValue n = intAdd 1 (case n of
+  0 -> 41
+  _ -> n)
+
+applyTwice :: (Int -> Int) -> Int -> Int
+applyTwice f x = f (f x)
+
+partial :: Int -> Int
+partial x = applyTwice (add 3) x
+
+stored :: Int -> Int
+stored x = let r = { f: add 4 } in applyTwice r.f x
+
+localLoop :: Int -> Int
+localLoop n = go n 0
+  where
+  go :: Int -> Int -> Int
+  go k acc = case k of
+    0 -> acc
+    _ -> go (intSub k 1) (intAdd acc 1)
+
+identity :: forall a. a -> a
+identity x = x
+
+fallback :: Int -> Int
+fallback x = identity x

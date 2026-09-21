@@ -64,11 +64,11 @@ type PmiEntry =
 magic :: Array Int
 magic = [ 0x50, 0x57, 0x50, 0x4D, 0x49 ]
 
--- | Bumped to 2 for the lowering-interface fields (ADR 0038 Phase B M2a); a stale v1 `.pmi` fails the
--- | version guard and degrades to a clean miss. The format itself is unchanged by retiring `.pmo`
--- | (ADR 0040) — the `.pmi` bytes are the same, so existing store artifacts stay valid.
+-- | Version 3 adds optional TAST types to MIR bindings/binder annotations and new
+-- | representation tags. Older summaries must miss the cache, not be decoded with
+-- | the new layout. Version 2 introduced lowering-interface fields (ADR 0038).
 formatVersion :: Int
-formatVersion = 2
+formatVersion = 3
 
 -- | Serialize a cache interface entry to `.pmi` bytes.
 encodePmi :: PmiEntry -> Uint8Array

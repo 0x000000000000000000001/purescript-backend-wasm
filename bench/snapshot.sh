@@ -9,8 +9,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 cd "$here/.."
 
-spago build -p bench --output bench/output
-node ./purs-wasm/index.js build -I ./bench/output -O ./bench/output-wasm -e Bench.Main
+npm --prefix bench run build
 
 cd "$here"
 stamp="$(date +%Y%m%d-%H%M%S)"

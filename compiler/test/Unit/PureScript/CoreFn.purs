@@ -12,7 +12,7 @@ import Data.String (Pattern(..), Replacement(..), replaceAll)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Class (liftEffect)
-import PureScript.CoreFn (Ann, Bind(..), Binder(..), ConstructorType(..), Expr(..), Literal(..), Meta(..), Qualified(..))
+import PureScript.CoreFn (Ann, Bind(..), Binder(..), ConstructorType(..), Expr(..), ExprType(..), Literal(..), Meta(..), Qualified(..))
 import PureScript.CoreFn.FromJSON (decodeBind, decodeBinder, decodeExpr, decodeModule)
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (fail, shouldEqual)
@@ -69,6 +69,10 @@ spec = describe "PureScript.CoreFn.FromJSON" do
     it "decodes App" do
       expr """{@,"type":"App","abstraction":{@,"type":"Var","value":{"identifier":"f","sourcePos":[0,0]}},"argument":{@,"type":"Var","value":{"identifier":"x","sourcePos":[0,0]}}}"""
         `shouldEqual` Right (App ann0 (Var ann0 (Qualified Nothing "f")) (Var ann0 (Qualified Nothing "x")))
+
+    it "decodes a typed TypeApp node" do
+      expr """{@,"type":"TypeApp","expression":{@,"type":"Var","value":{"identifier":"id","sourcePos":[0,0]}},"typeArgument":"Int"}"""
+        `shouldEqual` Right (TypeApp ann0 (Var ann0 (Qualified Nothing "id")) TypeInt)
 
     it "decodes Accessor" do
       expr """{@,"type":"Accessor","fieldName":"x","expression":{@,"type":"Var","value":{"identifier":"p","sourcePos":[0,0]}}}"""

@@ -39,9 +39,17 @@ spec = describe "PureScript.Backend.Wasm.Codegen.buildModule (stack safety)" do
   it "emits a program with many functions without overflowing (whole-program loop)" do
     let
       n = 30000
-      fns = map (\i -> { name: FuncName ("f" <> show i), params: [ Boxed ], result: Boxed, body: Return (ALitInt 0), export: Nothing
-    , localCount: 1
-    , forcedReps: Map.empty
-    }) (Array.range 0 (n - 1))
+      fns = map
+        ( \i ->
+            { name: FuncName ("f" <> show i)
+            , params: [ Boxed ]
+            , result: Boxed
+            , body: Return (ALitInt 0)
+            , export: Nothing
+            , localCount: 1
+            , forcedReps: Map.empty
+            }
+        )
+        (Array.range 0 (n - 1))
     r <- liftEffect (buildModule (prog fns))
     Array.length r.foreignModules `shouldEqual` 0

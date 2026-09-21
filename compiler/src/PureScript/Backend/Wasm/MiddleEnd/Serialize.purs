@@ -35,7 +35,7 @@ import Effect.Exception (error, message, throwException, try)
 import Effect.Unsafe (unsafePerformEffect)
 import PureScript.Backend.Wasm.MiddleEnd.IR as M
 import PureScript.Backend.Wasm.MiddleEnd.Serialize.Bytes (Reader, Writer, finish, getInt, getNumber, getString, getU8, newReader, newWriter, putInt, putNumber, putString, putU8)
-import PureScript.CoreFn (Bind(..), Binder(..), CaseAlternative, ConstructorType(..), ExprType(..), Ident, Literal(..), Meta(..), ProperName, Qualified(..), RecordUpdate)
+import PureScript.CoreFn (Binder(..), ConstructorType(..), ExprType(..), Literal(..), Meta(..), Qualified(..))
 
 -- | Serialize a module's optimized MIR to the `.pmo` body bytes. Pure and total: the
 -- | same module always yields the same bytes (the internal `Effect` only drives the

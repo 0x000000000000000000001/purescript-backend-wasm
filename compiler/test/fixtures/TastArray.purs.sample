@@ -1,0 +1,9 @@
+module ArrayProbe where
+
+import Wasm.Array (unsafeIndex)
+
+first :: Array Int -> Int
+first xs = unsafeIndex xs 0
+
+main :: Int -> Int
+main _ = first [42]

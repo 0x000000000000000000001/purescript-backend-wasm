@@ -27,3 +27,15 @@ spec =
         it "applies a multi-argument closure via a chain of call_ref" \inst -> do
           result <- liftEffect (callI32x3 inst "sum3" 1 2 3)
           result `shouldEqual` 6
+
+        it "calls an escaping recursive closure stored in a record" \inst -> do
+          result <- liftEffect (callI32x2 inst "storedCounter" 7 20)
+          result `shouldEqual` 27
+
+        it "partially applies a returned recursive closure" \inst -> do
+          result <- liftEffect (callI32x2 inst "partialCounter" 7 20)
+          result `shouldEqual` 27
+
+        it "captures a returned recursive closure in another lambda" \inst -> do
+          result <- liftEffect (callI32x2 inst "capturedCounter" 7 20)
+          result `shouldEqual` 54

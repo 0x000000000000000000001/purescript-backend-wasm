@@ -8,14 +8,17 @@ module Test.Unit.PureScript.Backend.Wasm.MiddleEnd.Serialize.Pmifile (spec) wher
 import Prelude
 
 import Data.Either (Either(..), isLeft)
+import Data.Foldable (traverse_)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
+import Effect.Class (liftEffect)
 import Foreign.Object as Object
 import PureScript.Backend.Wasm.Lower.IR (MarshalKind(..), Rep(..))
 import PureScript.Backend.Wasm.MiddleEnd.IR as M
 import PureScript.Backend.Wasm.MiddleEnd.Serialize (encode)
+import PureScript.Backend.Wasm.MiddleEnd.Serialize.Bytes (finish, newWriter, putU8)
 import PureScript.Backend.Wasm.MiddleEnd.Serialize.Pmifile (PmiEntry, decodePmi, encodePmi)
-import PureScript.CoreFn (Qualified(..))
+import PureScript.CoreFn (ExprType(..), Qualified(..))
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual)
 
@@ -53,6 +56,20 @@ spec = describe "PureScript.Backend.Wasm.MiddleEnd.Serialize.Pmifile" do
   it "round-trips a full interface entry (header + summary + lowering tables)" do
     decodePmi (encodePmi entry) `shouldEqual` Right entry
 
+  it "preserves optional TAST types in cached summaries" do
+    let
+      typed = entry
+        { summary = summaryMod
+            { decls =
+                [ M.NonRec Nothing (Just (TypeFunc [ TypeInt, TypeNumber ] (TypeArray TypeInt)))
+                    "worker"
+                    (M.Var (Qualified Nothing "x"))
+                , M.Rec [ { meta: Nothing, type: Just TypeInt, ident: "value", expr: M.Var (Qualified Nothing "x") } ]
+                ]
+            }
+        }
+    decodePmi (encodePmi typed) `shouldEqual` Right typed
+
   it "round-trips an entry with no dependencies and empty interface tables" do
     let
       e = entry
@@ -69,3 +86,10 @@ spec = describe "PureScript.Backend.Wasm.MiddleEnd.Serialize.Pmifile" do
 
   it "rejects a non-.pmi byte string (a raw MIR encoding)" do
     isLeft (decodePmi (encode summaryMod)) `shouldEqual` true
+
+  it "rejects the previous format before attempting to decode its body" do
+    bytes <- liftEffect do
+      w <- newWriter
+      traverse_ (putU8 w) [ 0x50, 0x57, 0x50, 0x4D, 0x49, 2 ]
+      finish w
+    decodePmi bytes `shouldEqual` Left "unsupported .pmi version: 2"

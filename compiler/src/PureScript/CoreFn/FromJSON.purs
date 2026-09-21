@@ -11,6 +11,7 @@ import Prelude
 
 import Data.Argonaut.Core (Json, isNull, toArray, toObject, toString)
 import Data.Argonaut.Decode (JsonDecodeError(..), decodeJson, (.:), (.:?))
+import Data.Array as Array
 import Data.Either (Either(..), note)
 import Data.Maybe (Maybe(..))
 import Data.String.CodeUnits (charAt)
@@ -27,105 +28,122 @@ decodeModule json = do
   name <- o .: "moduleName"
   path <- o .: "modulePath"
   builtWith <- o .: "builtWith"
-  imports <- arrayOf decodeImport =<< o .: "imports"
+  typeTableJson <- o .:? "typeTable"
+  typeTable <- case typeTableJson of
+    Nothing -> pure []
+    Just table -> arrayOf pure table
+  imports <- arrayOf (decodeImportWith typeTable) =<< o .: "imports"
   exports <- o .: "exports"
   reExports <- o .: "reExports" :: Either JsonDecodeError (Object (Array String))
   foreignNames <- o .: "foreign"
-  decls <- arrayOf decodeBind =<< o .: "decls"
+  decls <- arrayOf (decodeBindWith typeTable) =<< o .: "decls"
   pure { name, path, builtWith, imports, exports, reExports, foreignNames, decls }
 
-decodeImport :: Json -> Either JsonDecodeError { ann :: Ann, moduleName :: Array String }
-decodeImport json = do
+decodeImportWith :: Array Json -> Json -> Either JsonDecodeError { ann :: Ann, moduleName :: Array String }
+decodeImportWith typeTable json = do
   o <- objectOf json
-  ann <- decodeAnn =<< o .: "annotation"
+  ann <- decodeAnnWith typeTable =<< o .: "annotation"
   moduleName <- o .: "moduleName"
   pure { ann, moduleName }
 
 -- | Decode a binding group (`NonRec` / `Rec`).
 decodeBind :: Json -> Either JsonDecodeError Bind
-decodeBind json = do
+decodeBind = decodeBindWith []
+
+decodeBindWith :: Array Json -> Json -> Either JsonDecodeError Bind
+decodeBindWith typeTable json = do
   o <- objectOf json
   bindType <- o .: "bindType"
   case bindType of
-    "NonRec" -> NonRec <$> (decodeAnn =<< o .: "annotation") <*> o .: "identifier" <*> (decodeExpr =<< o .: "expression")
-    "Rec" -> Rec <$> (arrayOf decodeRecBinding =<< o .: "binds")
+    "NonRec" -> NonRec <$> (decodeAnnWith typeTable =<< o .: "annotation") <*> o .: "identifier" <*> (decodeExprWith typeTable =<< o .: "expression")
+    "Rec" -> Rec <$> (arrayOf (decodeRecBindingWith typeTable) =<< o .: "binds")
     other -> Left (Named ("unknown bindType " <> show other) MissingValue)
 
-decodeRecBinding :: Json -> Either JsonDecodeError RecBinding
-decodeRecBinding json = do
+decodeRecBindingWith :: Array Json -> Json -> Either JsonDecodeError RecBinding
+decodeRecBindingWith typeTable json = do
   o <- objectOf json
-  ann <- decodeAnn =<< o .: "annotation"
+  ann <- decodeAnnWith typeTable =<< o .: "annotation"
   ident <- o .: "identifier"
-  expr <- decodeExpr =<< o .: "expression"
+  expr <- decodeExprWith typeTable =<< o .: "expression"
   pure { ann, ident, expr }
 
 -- | Decode an expression.
 decodeExpr :: Json -> Either JsonDecodeError Expr
-decodeExpr json = do
+decodeExpr = decodeExprWith []
+
+decodeExprWith :: Array Json -> Json -> Either JsonDecodeError Expr
+decodeExprWith typeTable json = do
   o <- objectOf json
-  ann <- decodeAnn =<< o .: "annotation"
+  ann <- decodeAnnWith typeTable =<< o .: "annotation"
   exprType <- o .: "type"
   case exprType of
     "Literal" ->
-      Literal ann <$> (decodeLiteral decodeExpr =<< o .: "value")
+      Literal ann <$> (decodeLiteral (decodeExprWith typeTable) =<< o .: "value")
     "Constructor" ->
       Constructor ann <$> o .: "typeName" <*> o .: "constructorName" <*> o .: "fieldNames"
     "Accessor" ->
-      Accessor ann <$> o .: "fieldName" <*> (decodeExpr =<< o .: "expression")
+      Accessor ann <$> o .: "fieldName" <*> (decodeExprWith typeTable =<< o .: "expression")
     "ObjectUpdate" ->
       ObjectUpdate ann
-        <$> (decodeExpr =<< o .: "expression")
+        <$> (decodeExprWith typeTable =<< o .: "expression")
         <*> o .:? "copy"
-        <*> (arrayOf decodeAssoc =<< o .: "updates")
+        <*> (arrayOf (decodeAssocWith (decodeExprWith typeTable)) =<< o .: "updates")
     "Abs" ->
-      Abs ann <$> o .: "argument" <*> (decodeExpr =<< o .: "body")
+      Abs ann <$> o .: "argument" <*> (decodeExprWith typeTable =<< o .: "body")
     "App" ->
-      App ann <$> (decodeExpr =<< o .: "abstraction") <*> (decodeExpr =<< o .: "argument")
+      App ann <$> (decodeExprWith typeTable =<< o .: "abstraction") <*> (decodeExprWith typeTable =<< o .: "argument")
+    "TypeApp" ->
+      TypeApp ann
+        <$> (decodeExprWith typeTable =<< o .: "expression")
+        <*> (decodeExprTypeWith typeTable =<< o .: "typeArgument")
     "Var" ->
       Var ann <$> (decodeQualified =<< o .: "value")
     "Case" ->
       Case ann
-        <$> (arrayOf decodeExpr =<< o .: "caseExpressions")
-        <*> (arrayOf decodeCaseAlternative =<< o .: "caseAlternatives")
+        <$> (arrayOf (decodeExprWith typeTable) =<< o .: "caseExpressions")
+        <*> (arrayOf (decodeCaseAlternativeWith typeTable) =<< o .: "caseAlternatives")
     "Let" ->
       Let ann
-        <$> (arrayOf decodeBind =<< o .: "binds")
-        <*> (decodeExpr =<< o .: "expression")
+        <$> (arrayOf (decodeBindWith typeTable) =<< o .: "binds")
+        <*> (decodeExprWith typeTable =<< o .: "expression")
     other -> Left (Named ("unknown expression type " <> show other) MissingValue)
 
-decodeCaseAlternative :: Json -> Either JsonDecodeError CaseAlternative
-decodeCaseAlternative json = do
+decodeCaseAlternativeWith :: Array Json -> Json -> Either JsonDecodeError CaseAlternative
+decodeCaseAlternativeWith typeTable json = do
   o <- objectOf json
-  binders <- arrayOf decodeBinder =<< o .: "binders"
+  binders <- arrayOf (decodeBinderWith typeTable) =<< o .: "binders"
   isGuarded <- o .: "isGuarded"
   result <-
-    if isGuarded then Left <$> (arrayOf decodeGuard =<< o .: "expressions")
-    else Right <$> (decodeExpr =<< o .: "expression")
+    if isGuarded then Left <$> (arrayOf (decodeGuardWith typeTable) =<< o .: "expressions")
+    else Right <$> (decodeExprWith typeTable =<< o .: "expression")
   pure { binders, result }
 
-decodeGuard :: Json -> Either JsonDecodeError Guard
-decodeGuard json = do
+decodeGuardWith :: Array Json -> Json -> Either JsonDecodeError Guard
+decodeGuardWith typeTable json = do
   o <- objectOf json
-  guard <- decodeExpr =<< o .: "guard"
-  expression <- decodeExpr =<< o .: "expression"
+  guard <- decodeExprWith typeTable =<< o .: "guard"
+  expression <- decodeExprWith typeTable =<< o .: "expression"
   pure { guard, expression }
 
 -- | Decode a pattern binder.
 decodeBinder :: Json -> Either JsonDecodeError Binder
-decodeBinder json = do
+decodeBinder = decodeBinderWith []
+
+decodeBinderWith :: Array Json -> Json -> Either JsonDecodeError Binder
+decodeBinderWith typeTable json = do
   o <- objectOf json
-  ann <- decodeAnn =<< o .: "annotation"
+  ann <- decodeAnnWith typeTable =<< o .: "annotation"
   binderType <- o .: "binderType"
   case binderType of
     "NullBinder" -> pure (NullBinder ann)
     "VarBinder" -> VarBinder ann <$> o .: "identifier"
-    "LiteralBinder" -> LiteralBinder ann <$> (decodeLiteral decodeBinder =<< o .: "literal")
-    "NamedBinder" -> NamedBinder ann <$> o .: "identifier" <*> (decodeBinder =<< o .: "binder")
+    "LiteralBinder" -> LiteralBinder ann <$> (decodeLiteral (decodeBinderWith typeTable) =<< o .: "literal")
+    "NamedBinder" -> NamedBinder ann <$> o .: "identifier" <*> (decodeBinderWith typeTable =<< o .: "binder")
     "ConstructorBinder" ->
       ConstructorBinder ann
         <$> (decodeQualified =<< o .: "typeName")
         <*> (decodeQualified =<< o .: "constructorName")
-        <*> (arrayOf decodeBinder =<< o .: "binders")
+        <*> (arrayOf (decodeBinderWith typeTable) =<< o .: "binders")
     other -> Left (Named ("unknown binderType " <> show other) MissingValue)
 
 -- | Decode a literal, given a decoder for its element type (`Expr` or
@@ -155,17 +173,25 @@ decodeQualified json = do
   identifier <- o .: "identifier"
   pure (Qualified moduleName identifier)
 
-decodeAnn :: Json -> Either JsonDecodeError Ann
-decodeAnn json = do
+decodeAnnWith :: Array Json -> Json -> Either JsonDecodeError Ann
+decodeAnnWith typeTable json = do
   o <- objectOf json
   span <- decodeSpan =<< o .: "sourceSpan"
   metaJson <- o .: "meta"
   meta <- if isNull metaJson then pure Nothing else Just <$> decodeMeta metaJson
-  typeOpt <- (o .:? "type") >>= traverse decodeExprType
+  typeOpt <- (o .:? "type") >>= traverse (decodeExprTypeWith typeTable)
   pure { span, meta, type: typeOpt }
 
-decodeExprType :: Json -> Either JsonDecodeError ExprType
-decodeExprType json = do
+decodeExprTypeWith :: Array Json -> Json -> Either JsonDecodeError ExprType
+decodeExprTypeWith typeTable json = do
+  case (decodeJson json :: Either JsonDecodeError Int) of
+    Right index -> case Array.index typeTable index of
+      Just entry -> decodeExprTypeWith typeTable entry
+      Nothing -> Left (Named ("type table index out of bounds: " <> show index) MissingValue)
+    Left _ -> decodeExprTypeObject typeTable json
+
+decodeExprTypeObject :: Array Json -> Json -> Either JsonDecodeError ExprType
+decodeExprTypeObject typeTable json = do
   case toString json of
     Just s -> pure case s of
       "Int" -> TypeInt
@@ -176,25 +202,46 @@ decodeExprType json = do
     Nothing -> case toObject json of
       Just o -> case Object.lookup "Array" o of
         Just arrJson -> do
-          inner <- decodeExprType arrJson
+          inner <- decodeExprTypeWith typeTable arrJson
           pure (TypeArray inner)
         Nothing -> case Object.lookup "Func" o of
           Just funcJson -> do
             funcObj <- objectOf funcJson
             argsJson <- funcObj .: "args"
-            args <- arrayOf decodeExprType argsJson
+            args <- arrayOf (decodeExprTypeWith typeTable) argsJson
             retJson <- funcObj .: "ret"
-            ret <- decodeExprType retJson
+            ret <- decodeExprTypeWith typeTable retJson
             pure (TypeFunc args ret)
           Nothing -> case Object.lookup "ADT" o of
             Just adtJson -> do
               adtObj <- objectOf adtJson
               pathArr <- adtObj .: "path"
-              if pathArr == ["Wasm", "Int64", "Int64"]
-                then pure TypeInt64
-                else pure TypeOther
-            Nothing -> pure TypeOther
+              if pathArr == [ "Wasm", "Int64", "Int64" ] then pure TypeInt64
+              else pure TypeOther
+            Nothing -> decodeModernExprType typeTable o
       Nothing -> pure TypeOther
+
+decodeModernExprType :: Array Json -> Object Json -> Either JsonDecodeError ExprType
+decodeModernExprType typeTable o = do
+  modernType <- o .:? "type"
+  case modernType of
+    Just "Int" -> pure TypeInt
+    Just "Number" -> pure TypeNumber
+    Just "Boolean" -> pure TypeBoolean
+    Just "Char" -> pure TypeChar
+    Just "Array" -> TypeArray <$> (decodeExprTypeWith typeTable =<< o .: "element")
+    Just "Func" -> do
+      args <- arrayOf (decodeExprTypeWith typeTable) =<< o .: "args"
+      ret <- decodeExprTypeWith typeTable =<< o .: "ret"
+      pure (TypeFunc args ret)
+    Just "Adt" -> do
+      fqn <- o .: "fqn"
+      if fqn == [ "Wasm", "Int64", "Int64" ] then pure TypeInt64 else pure TypeOther
+    Just "ForAll" -> decodeExprTypeWith typeTable =<< o .: "body"
+    Just "ConstrainedType" -> decodeExprTypeWith typeTable =<< o .: "body"
+    Just "TypeApp" -> pure TypeOther
+    Just _ -> pure TypeOther
+    Nothing -> pure TypeOther
 
 decodeMeta :: Json -> Either JsonDecodeError Meta
 decodeMeta json = do
@@ -232,10 +279,6 @@ decodePos json = do
 
 decodeInt :: Json -> Either JsonDecodeError Int
 decodeInt = decodeJson
-
--- | `[key, value]` association where the value is an expression.
-decodeAssoc :: Json -> Either JsonDecodeError (Tuple String Expr)
-decodeAssoc json = decodeAssocWith decodeExpr json
 
 -- | `[key, value]` association decoded with a given value decoder.
 decodeAssocWith :: forall a. (Json -> Either JsonDecodeError a) -> Json -> Either JsonDecodeError (Tuple String a)

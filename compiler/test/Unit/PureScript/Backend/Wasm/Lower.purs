@@ -9,11 +9,15 @@ import Prelude
 
 import Data.Array as Array
 import Data.Either (Either(..))
+import Data.Foldable (for_)
 import Data.Maybe (Maybe(..))
+import Data.Set as Set
 import Data.Tuple (Tuple(..))
 import Foreign.Object as Object
+import PureScript.Backend.Wasm.Lower (lowerModule, lowerModuleWithInterfaces, lowerProgramFragments)
 import PureScript.Backend.Wasm.Lower.IR (Atom(..), FuncName(..), LitPat(..), MarshalKind(..), RecBind(..), Rep(..), VarRef(..))
 import PureScript.Backend.Wasm.Lower.LabelHash (labelHash)
+import PureScript.Backend.Wasm.MiddleEnd.Transl (translModule)
 import PureScript.CoreFn as CF
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (fail, shouldEqual)
@@ -52,6 +56,16 @@ spec = describe "PureScript.Backend.Wasm.Lower (lowering)" do
           Just code -> Array.elem (AVar (EnvField 0)) (blockAtoms code.body) `shouldEqual` true
 
   describe "application" do
+    it "does not mistake a local function named intAdd for an intrinsic" do
+      let f = def "f" (lam "intAdd" (lam "x" (appE (appE (lv "intAdd") (lv "x")) (lv "x"))))
+      case lower [ f ] of
+        Left err -> fail (show err)
+        Right prog -> case exported "f" prog of
+          Nothing -> fail "expected an exported function f"
+          Just fn -> do
+            Array.any isPrim (allRhs fn.body) `shouldEqual` false
+            Array.length (Array.filter isApply (allRhs fn.body)) `shouldEqual` 2
+
     it "lowers application of a local value to a closure apply (call_ref)" do
       -- g f x = f x  -- f is an unknown function value
       let g = def "g" (lam "f" (lam "x" (appE (lv "f") (lv "x"))))
@@ -98,6 +112,32 @@ spec = describe "PureScript.Backend.Wasm.Lower (lowering)" do
             Array.any isApply (allRhs fn.body) `shouldEqual` true
 
   describe "recursion" do
+    for_
+      [ Tuple "returned" (lv "go")
+      , Tuple "partially applied" (appE (lv "go") (litInt 1))
+      , Tuple "stored in a record" (litObj [ Tuple "run" (lv "go") ])
+      , Tuple "stored in an array" (CF.Literal ann (CF.LitArray [ lv "go" ]))
+      , Tuple "captured by a lambda" (lam "z" (appE (appE (lv "go") (lv "z")) (lv "x")))
+      , Tuple "shadowed by a lambda parameter" (lam "go" (appE (lv "go") (lv "x")))
+      ]
+      \(Tuple label use) ->
+        it ("keeps recursive functions usable as values: " <> label) do
+          let
+            recursive = lam "a"
+              ( lam "b"
+                  ( caseOf (lv "a")
+                      [ intAlt 0 (lv "b")
+                      , wildAlt (appE (appE (lv "go") (litInt 0)) (lv "x"))
+                      ]
+                  )
+              )
+            f = def "f" (lam "x" (letRec "go" recursive use))
+          case lowerModule false (translModule (moduleNamed [ "T" ] [ f ])) of
+            Left err -> fail (show err)
+            Right prog -> do
+              Array.null (liftedFuncs prog) `shouldEqual` false
+              Array.all (\fn -> fn.params == [ CloRef, Boxed ]) (liftedFuncs prog) `shouldEqual` true
+
     -- Self-recursive local functions are lifted to top-level supercombinators by
     -- the middle-end's lambda-lifting pass, not by lowering; that lift (and the
     -- resulting direct self-call) is covered in `Test.…MiddleEnd.Optimize.LambdaLift`.
@@ -212,6 +252,111 @@ spec = describe "PureScript.Backend.Wasm.Lower (lowering)" do
           Nothing -> fail "expected an exported function f"
           -- the knot-tie emits the `newWithSelf`/`read` Ref primitives
           Just fn -> Array.any isPrim (allRhs fn.body) `shouldEqual` true
+
+  describe "representation boundaries" do
+    it "preserves call-site inference in an unannotated root module" do
+      let
+        m = translModule
+          ( moduleNamed [ "T" ]
+              [ def "identity" (lam "x" (lv "x"))
+              , def "main" (appE (qv "identity") (litInt 42))
+              ]
+          )
+      case lowerProgramFragments Object.empty Object.empty Set.empty [ [ "T" ] ] [ m ] of
+        Left err -> fail (show err)
+        Right lowered -> do
+          let fn = Array.find (\f -> f.name == FuncName "T.identity") (lowered.fragments >>= _.funcs)
+          (_.params <$> fn) `shouldEqual` Just [ I32 ]
+          (_.result <$> fn) `shouldEqual` Just I32
+
+    it "keeps a cross-module ABI boxed even for an annotated root" do
+      let
+        typed = ann { type = Just (CF.TypeFunc [ CF.TypeInt ] CF.TypeInt) }
+        root = moduleNamed [ "T" ] [ CF.NonRec typed "identity" (lam "x" (lv "x")) ]
+        consumer = moduleNamed [ "Consumer" ] [ def "main" (appE (qv "identity") (litInt 42)) ]
+      case lowerProgramFragments Object.empty Object.empty Set.empty [ [ "T" ], [ "Consumer" ] ] (map translModule [ root, consumer ]) of
+        Left err -> fail (show err)
+        Right lowered -> do
+          let fn = Array.find (\f -> f.name == FuncName "T.identity") (lowered.fragments >>= _.funcs)
+          (_.params <$> fn) `shouldEqual` Just [ Boxed ]
+          (_.result <$> fn) `shouldEqual` Just Boxed
+
+    it "does not truncate runtime parameters to a shorter source type" do
+      let
+        typed = ann { type = Just (CF.TypeFunc [ CF.TypeInt ] CF.TypeInt) }
+        f = CF.NonRec typed "f" (lam "dict" (lam "x" (lv "x")))
+      case lowerModule false (translModule (moduleNamed [ "T" ] [ f ])) of
+        Left err -> fail (show err)
+        Right prog -> (_.params <$> exported "f" prog) `shouldEqual` Just [ Boxed, Boxed ]
+
+    it "keeps the boxed module ABI but gives a typed recursive Int function a private worker" do
+      let
+        typed = ann { type = Just (CF.TypeFunc [ CF.TypeInt ] CF.TypeInt) }
+        m = translModule (moduleNamed [ "T" ] [ CF.NonRec typed "identity" (lam "x" (appE (qv "identity") (lv "x"))) ])
+      case lowerModuleWithInterfaces Object.empty Object.empty Set.empty [] true m of
+        Left err -> fail (show err)
+        Right lowered -> do
+          let public = Array.find (\f -> f.name == FuncName "T.identity") lowered.fragment.funcs
+          let worker = Array.find (\f -> f.name /= FuncName "T.identity") lowered.fragment.funcs
+          (_.params <$> public) `shouldEqual` Just [ Boxed ]
+          (_.result <$> public) `shouldEqual` Just Boxed
+          (_.params <$> worker) `shouldEqual` Just [ I32 ]
+          (_.result <$> worker) `shouldEqual` Just I32
+          (_.export <$> worker) `shouldEqual` Just Nothing
+          Array.length lowered.fragment.funcs `shouldEqual` 2
+          (callKnownNames <<< _.body <$> public) `shouldEqual` (map (\f -> case f.name of FuncName name -> [ name ]) worker)
+
+    it "chooses a fresh private worker name without replacing an existing function" do
+      let
+        typed = ann { type = Just (CF.TypeFunc [ CF.TypeInt ] CF.TypeInt) }
+        m = translModule
+          ( moduleNamed [ "T" ]
+              [ CF.NonRec typed "identity" (lam "x" (appE (qv "identity") (lv "x")))
+              , def "identity$tast0" (lam "x" (lv "x"))
+              ]
+          )
+      case lowerModuleWithInterfaces Object.empty Object.empty Set.empty [] false m of
+        Left err -> fail (show err)
+        Right lowered -> do
+          let worker = Array.find (\f -> f.name == FuncName "T.identity$tast1") lowered.fragment.funcs
+          (_.params <$> worker) `shouldEqual` Just [ I32 ]
+          Array.length lowered.fragment.funcs `shouldEqual` 3
+          Set.member "T.identity$tast1" lowered.crossModuleRefs `shouldEqual` false
+
+    it "redirects a typed recursive call to its private worker, not its boxed wrapper" do
+      let
+        typed = ann { type = Just (CF.TypeFunc [ CF.TypeInt ] CF.TypeInt) }
+        m = translModule (moduleNamed [ "T" ] [ CF.NonRec typed "recur" (lam "x" (appE (qv "recur") (lv "x"))) ])
+      case lowerModuleWithInterfaces Object.empty Object.empty Set.empty [] false m of
+        Left err -> fail (show err)
+        Right lowered -> do
+          let worker = Array.find (\f -> f.name == FuncName "T.recur$tast0") lowered.fragment.funcs
+          (callKnownNames <<< _.body <$> worker) `shouldEqual` Just [ "T.recur$tast0" ]
+
+    it "does not create a typed worker without a complete matching Int signature" do
+      for_
+        [ Nothing
+        , Just (CF.TypeFunc [ CF.TypeOther ] CF.TypeInt)
+        , Just (CF.TypeFunc [ CF.TypeInt, CF.TypeInt ] CF.TypeInt)
+        , Just (CF.TypeFunc [ CF.TypeArray CF.TypeInt ] CF.TypeInt)
+        , Just (CF.TypeFunc [ CF.TypeNumber ] CF.TypeNumber)
+        , Just (CF.TypeFunc [ CF.TypeInt ] CF.TypeOther)
+        ]
+        \type_ -> do
+          let m = translModule (moduleNamed [ "T" ] [ CF.NonRec (ann { type = type_ }) "identity" (lam "x" (appE (qv "identity") (lv "x"))) ])
+          case lowerModuleWithInterfaces Object.empty Object.empty Set.empty [] true m of
+            Left err -> fail (show err)
+            Right lowered -> do
+              Array.length lowered.fragment.funcs `shouldEqual` 1
+              (_.params <$> Array.head lowered.fragment.funcs) `shouldEqual` Just [ Boxed ]
+
+    it "leaves a typed nonrecursive leaf on the existing path" do
+      let
+        typed = ann { type = Just (CF.TypeFunc [ CF.TypeInt ] CF.TypeInt) }
+        m = translModule (moduleNamed [ "T" ] [ CF.NonRec typed "identity" (lam "x" (lv "x")) ])
+      case lowerModuleWithInterfaces Object.empty Object.empty Set.empty [] false m of
+        Left err -> fail (show err)
+        Right lowered -> Array.length lowered.fragment.funcs `shouldEqual` 1
 
   describe "data types" do
     it "assigns constructor tags by declaration order and erases the constructors" do

@@ -64,6 +64,23 @@ if it is bumped.
 
 ## Regenerating
 
+`TastIntLib` and `TastIntClient` are also real typed fixtures from fork commit
+`319e138cbcbee59b3837f6cba7ca03a680395e67`. `TastIntClientStock` is the same
+client compiled with official purs 0.15.16. Compile the two source samples
+together with `--codegen corefn` to regenerate them, normalising only
+`modulePath`. `typedWorkers.mjs` checks recursive/private workers, public and
+cross-module calls (including a stock caller), closures, joins and Int32
+overflow in five build modes. No fork executable is needed to run these tests.
+
+`TastArray` and `TastWasmArray` are typed fixtures from the local PureScript fork,
+commit `319e138cbcbee59b3837f6cba7ca03a680395e67` (0.15.16), not stock CoreFn.
+`typedArrays.mjs` exercises them through the real CLI in five build modes. They
+guard against treating an ordinary array literal as native i32 storage based
+only on its element type. Regenerate both `.purs.sample` files together with the
+fork's `purs compile --codegen corefn`, in a fresh output directory. Copy each
+module's JSON to the corresponding fixture; only `modulePath` is normalised to
+the checked-in source sample path. The fork is not needed to run the tests.
+
 Each fixture is built by temporarily dropping its source into `compiler/src`,
 compiling to CoreFn, copying the result back, and cleaning up. For `Slice1`
 (no foreign module) omit the `.js` lines.
