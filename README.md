@@ -4,6 +4,32 @@ An experimental WebAssembly backend for PureScript compiler
 
 [![purs - v0.15.16](https://img.shields.io/badge/purs-v0.15.16-blue?logo=purescript)](https://github.com/purescript/purescript/releases/tag/v0.15.15) [![CI](https://github.com/purs-wasm/purescript-backend-wasm/actions/workflows/ci.yaml/badge.svg)](https://github.com/purs-wasm/purescript-backend-wasm/actions/workflows/ci.yaml)
 
+## TAST performance progress
+
+Personal experiment on the `tast` branch, for learning and trying things out.
+No PR is currently planned.
+
+Latest measurement: **2026-09-21**, Apple M4 Pro, Node 24.8.0.
+
+| Workload | Speedup vs upstream | Isolated TAST benefit |
+| --- | ---: | ---: |
+| Fibonacci, upstream benchmark (`n = 28`) | **3.46×** | **3.43×** |
+| `polyInt`, local probe (`n = 6,400,000`) | **1.67×** | **1.68×** |
+
+TAST types enable private recursive `i32` workers while preserving the public
+calling convention. A profitability guard now avoids the earlier curry
+regression: its Wasm is identical with and without TAST metadata.
+
+The full comparison covers 11 workloads and 59 sizes, with three rotated runs
+in isolated processes. The isolated benefit compares the same backend with
+and without type metadata; the upstream comparison also includes frontend
+differences. These are local kernel gains, not an overall speedup. Other
+results include small slowdowns; full pinned-environment CI is still pending.
+
+[Full results, limitations, experiment history and reproduction steps](TAST.md).
+The benchmark discussion and charts below are inherited from upstream, not
+measurements of this TAST experiment.
+
 ## Overview
 
 The compiler consumes `purs`'s CoreFn (`corefn.json`) and externs (`externs.cbor`)

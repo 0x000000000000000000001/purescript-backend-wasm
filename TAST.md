@@ -1,8 +1,9 @@
 # TAST-driven recursive Int workers
 
-This note records a narrow performance experiment for a future PR, not a claim
-that the experimental branch is already merge-ready or that TAST makes every
-program faster. The implementation consumes the local PureScript fork's typed
+This note documents a personal experiment on the `tast` branch, not a PR
+proposal or a claim that TAST makes every program faster. No PR is currently
+planned. For a short overview, see the [performance progress summary](README.md#tast-performance-progress).
+The implementation consumes the local PureScript fork's typed
 CoreFn directly, through the Wasm backend's existing reader and optimiser. PBO
 is not a new build dependency and was not changed for this experiment.
 
